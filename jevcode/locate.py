@@ -206,3 +206,58 @@ def pick_line(one, repo, rel: str, task: str, window: int = MAX_OPTIONS) -> dict
             best = {"line": int(top[1:]), "p": p, "present": a.p("present"),
                     "confidence": a.confidence("line")}
     return best
+
+
+# --------------------------------------------------------- files that do not exist yet
+
+NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+
+
+def new_file_options(repo, task: str, limit: int = 60) -> dict:
+    """Plausible paths for a file the repository does not have yet.
+
+    The model is never asked to type a path — it picks one. So the paths are
+    built here, out of two things that are already true: paths the task names
+    literally, and the shape of the tree (its directories and the extension it
+    mostly uses). A closed set again, and a short one.
+    """
+    existing = set(repo.files())
+    options: dict = {}
+
+    for match in PATHY_RE.finditer(task):
+        rel = match.group(0).strip(".,;:()[]'\"").lstrip("./")
+        if rel and rel not in existing and "." in os.path.basename(rel):
+            options[rel] = {"why": "named in the task"}
+
+    suffix = _common_suffix(existing)
+    stems = [w.lower() for w in NAME_RE.findall(task)
+             if w.lower() not in STOPWORDS][:4]
+    folders = _folders(existing)
+    for stem in stems:
+        for folder in folders:
+            rel = os.path.join(folder, stem + suffix) if folder else stem + suffix
+            if rel in existing or rel in options:
+                continue
+            options[rel] = {"why": "a new %s file named after the task, beside %s"
+                                   % (suffix.lstrip(".") or "text", folder or "the root")}
+            if len(options) >= limit:
+                return options
+    return options
+
+
+def _common_suffix(files) -> str:
+    counts: dict = {}
+    for rel in files:
+        suffix = os.path.splitext(rel)[1].lower()
+        if suffix in (".py", ".js", ".ts", ".tsx", ".go", ".rs", ".rb", ".java", ".php"):
+            counts[suffix] = counts.get(suffix, 0) + 1
+    return max(counts, key=counts.get) if counts else ".txt"
+
+
+def _folders(files, limit: int = 8) -> list:
+    counts: dict = {}
+    for rel in files:
+        folder = os.path.dirname(rel)
+        counts[folder] = counts.get(folder, 0) + 1
+    ordered = sorted(counts, key=lambda f: (f.count(os.sep), -counts[f]))
+    return ordered[:limit]

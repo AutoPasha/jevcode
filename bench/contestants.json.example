@@ -1,0 +1,17 @@
+{
+  "//": "Copy to contestants.json and keep only the agents you actually have.",
+  "//command": "{dir} is the copy of the task; {task} is the sentence, already quoted for you.",
+
+  "opencode": {
+    "command": "opencode run --dir {dir} \"{task}\""
+  },
+  "claude": {
+    "command": "claude -p \"{task}\" --permission-mode acceptEdits"
+  },
+  "aider": {
+    "command": "aider --yes --no-git --message \"{task}\" ."
+  },
+  "codex": {
+    "command": "codex exec --full-auto \"{task}\""
+  }
+}

@@ -20,9 +20,9 @@ import json
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
+
+from . import net
 
 DEFAULT_URL = "https://api.openai.com/v1/chat/completions"
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -76,24 +76,25 @@ class Writer:
     def _once(self, prompt: str, system: str, temperature: float, max_tokens: int) -> tuple:
         messages = ([{"role": "system", "content": system}] if system else [])
         messages.append({"role": "user", "content": prompt})
-        body = json.dumps({"model": self.model, "messages": messages,
-                           "temperature": temperature, "max_tokens": max_tokens},
-                          ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(self.url, data=body, headers={
+        payload = {"model": self.model, "messages": messages,
+                   "temperature": temperature, "max_tokens": max_tokens}
+        out, spent = net.post_json(self.url, payload, {
             "Authorization": "Bearer " + (self.key or ""),
-            "Content-Type": "application/json",
             "User-Agent": "jevcode",
-        })
-        started = time.time()
-        raw = urllib.request.urlopen(req, timeout=self.timeout).read()
-        out = json.loads(raw)
-        spent = time.time() - started
+        }, self.timeout)
         self.usage.add(out, spent)
         return out["choices"][0]["message"]["content"], spent
 
     def drafts(self, prompt: str, n: int = 4, system: str = "", max_tokens: int = 1600,
-               spread: float = 0.25) -> list:
-        """n candidates in parallel. Temperature fans out so they differ."""
+               spread: float = 0.25, enough: int = 0, grace: float = 2.5) -> list:
+        """n candidates in parallel. Temperature fans out so they differ.
+
+        The slowest of eight parallel calls sets the pace of the whole step, and
+        it is usually an outlier rather than a better answer. So once `enough`
+        of them are back the rest get `grace` seconds and are then abandoned:
+        the judgement happens on the drafts that arrived, and a straggler that
+        lands later simply does not compete. Set `enough` to 0 to wait for all.
+        """
         if not self.key:
             raise RuntimeError("no writer key: set JEVCODE_WRITER_KEY (or OPENAI_API_KEY)")
 
@@ -101,16 +102,22 @@ class Writer:
             temp = self.temperature + spread * (i / max(n - 1, 1))
             try:
                 text, spent = self._once(prompt, system, min(temp, 1.3), max_tokens)
-            except urllib.error.HTTPError as ex:
-                return Draft(i, "", "", 0.0, "HTTP %d: %s"
-                             % (ex.code, ex.read().decode("utf-8", "replace")[:200]))
+            except net.HTTPError as ex:
+                return Draft(i, "", "", 0.0, "HTTP %d: %s" % (ex.status, ex.body[:200]))
             except Exception as ex:                      # noqa: BLE001 - reported, not raised
                 return Draft(i, "", "", 0.0, str(ex)[:200])
             return Draft(i, text, extract_code(text), round(spent, 2))
 
-        with cf.ThreadPoolExecutor(max(n, 1)) as pool:
-            out = list(pool.map(one, range(n)))
-        return sorted(out, key=lambda d: d.index)
+        pool = cf.ThreadPoolExecutor(max(n, 1))
+        futures = [pool.submit(one, i) for i in range(n)]
+        try:
+            if not enough or enough >= n:
+                out = [f.result() for f in futures]
+            else:
+                out = _settle(futures, enough, grace)
+        finally:
+            pool.shutdown(wait=False)
+        return sorted([d for d in out if d is not None], key=lambda d: d.index)
 
 
 def extract_code(text: str) -> str:
@@ -119,3 +126,19 @@ def extract_code(text: str) -> str:
     if blocks:
         return max(blocks, key=len).strip("\n")
     return (text or "").strip()
+
+
+def _settle(futures: list, enough: int, grace: float) -> list:
+    """Wait for `enough` drafts, then give the rest `grace` seconds and move on."""
+    done = []
+    pending = list(futures)
+    while pending and len(done) < enough:
+        finished, pending_set = cf.wait(pending, return_when=cf.FIRST_COMPLETED)
+        for f in finished:
+            done.append(f.result())
+        pending = list(pending_set)
+    if pending:
+        finished, _ = cf.wait(pending, timeout=grace)
+        for f in finished:
+            done.append(f.result())
+    return done

@@ -1,0 +1,1 @@
+add a --json flag to the report command so it prints the same numbers as a JSON object instead of the text lines

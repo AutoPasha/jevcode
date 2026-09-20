@@ -91,7 +91,8 @@ def context_window(repo, rel: str, start: int, end: int, margin: int = 40) -> st
 
 
 def write(one, writer, repo, rel: str, start: int, end: int, task: str,
-          n: int = 6, related: str = "", failure: tuple = ()) -> PatchResult:
+          n: int = 6, related: str = "", failure: tuple = (),
+          settle_at: int = 0, settle_grace: float = 2.5) -> PatchResult:
     """n candidate replacements for one region, filtered in code, ranked by Jev.
 
     `related` is other code the change has to keep working with — usually the
@@ -106,7 +107,8 @@ def write(one, writer, repo, rel: str, start: int, end: int, task: str,
         region=region_text or "(empty)",
         related=RELATED.format(body=related[:4000]) if related else "",
         failure=FAILURE.format(command=failure[0], output=failure[1][-1500:]) if failure else "")
-    drafts = writer.drafts(prompt, n=n, system=SYSTEM)
+    drafts = writer.drafts(prompt, n=n, system=SYSTEM,
+                           enough=settle_at, grace=settle_grace)
 
     seen, cands = {}, []
     for draft in drafts:
@@ -166,3 +168,74 @@ def next_best(result: PatchResult, exclude: set) -> Candidate | None:
     if not rest:
         return None
     return sorted(rest, key=lambda c: -c.probability)[0]
+
+
+NEW_SYSTEM = ("You are the writing half of a coding agent. Another model has "
+              "decided that a new file is needed and where it goes. Write the "
+              "whole file and nothing else: one fenced code block, no "
+              "explanation, no commentary.")
+
+NEW_BRIEF = """Task: {task}
+
+Create a new file: {path}
+
+It has to fit a project that already contains these files:
+
+{tree}
+{related}
+Write the complete contents of {path}. Reply with one fenced code block and
+nothing else."""
+
+
+def create(one, writer, repo, rel: str, task: str, n: int = 4, related: str = "",
+           settle_at: int = 0, settle_grace: float = 2.5) -> PatchResult:
+    """The same shape as an edit — several whole files, judged, one chosen.
+
+    A new file has no region to replace and no surrounding code to match, which
+    makes the writer *more* likely to wander, not less. So it gets the tree it
+    is joining, and the candidates are judged against the task exactly as a
+    patch would be.
+    """
+    tree = "\n".join(repo.files()[:120])
+    prompt = NEW_BRIEF.format(
+        task=task, path=rel, tree=tree,
+        related=RELATED.format(body=related[:4000]) if related else "")
+    drafts = writer.drafts(prompt, n=n, system=NEW_SYSTEM,
+                           enough=settle_at, grace=settle_grace)
+
+    seen, cands = {}, []
+    for draft in drafts:
+        letter = LETTERS[len(cands)]
+        cand = Candidate(letter, draft.code, draft.text, seconds=draft.seconds)
+        if draft.error:
+            cand.rejected = "writer failed: " + draft.error
+        elif not draft.code.strip():
+            cand.rejected = "empty"
+        else:
+            problem = act.syntax_error(rel, draft.code)
+            if problem:
+                cand.rejected = "does not parse: " + problem
+            elif draft.code.strip() in seen:
+                cand.rejected = "same as candidate " + seen[draft.code.strip()]
+            else:
+                seen[draft.code.strip()] = letter
+        cands.append(cand)
+
+    alive = [c for c in cands if c.alive]
+    if not alive:
+        return PatchResult(cands, None, 0.0, "every candidate was rejected before judging")
+    if len(alive) == 1:
+        return PatchResult(cands, alive[0], 0.0, "only one candidate survived the checks")
+
+    state = {"task": task, "file": rel, "context": "a new file in %s" % repo.root,
+             "current_code": "(the file does not exist yet)",
+             "candidates": {c.letter: c.code[:6000] for c in alive}}
+    a = one.ask(state, questions.judge_patches([c.letter for c in alive], task))
+    probs = a.probs("best")
+    for c in alive:
+        c.probability = probs.get(c.letter, 0.0)
+        c.works = a.p("works_" + c.letter)
+        c.scope = a.p("scope_" + c.letter)
+    ranked = sorted(alive, key=lambda c: -c.probability)
+    return PatchResult(cands, ranked[0], a.confidence("best"),
+                       "picked out of %d candidates" % len(alive))

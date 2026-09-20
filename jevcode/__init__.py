@@ -7,7 +7,7 @@ every move, for a fraction of a cent. The code writing is handed to a small fast
 model that is told exactly what to write and never asked what to do.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from .engine import Agent, Outcome           # noqa: F401
 from .systemone import SystemOne, Usage      # noqa: F401

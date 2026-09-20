@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="jevcode">
+  <title>jevcode</title>
+  <rect x="0" y="0" width="128" height="128" rx="28" fill="#1a1a19"/>
+  <!-- three bars: the agent's options, ranked by probability -->
+  <rect x="26" y="34" width="46" height="10" rx="5" fill="#2a78d6"/>
+  <rect x="26" y="52" width="30" height="10" rx="5" fill="#3987e5" opacity="0.72"/>
+  <rect x="26" y="70" width="17" height="10" rx="5" fill="#3987e5" opacity="0.45"/>
+  <!-- the caret: the one it picked -->
+  <path d="M84 30 L104 54 L84 78" fill="none" stroke="#eb6834" stroke-width="10"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="26" y="92" width="76" height="8" rx="4" fill="#c3c2b7" opacity="0.55"/>
+</svg>

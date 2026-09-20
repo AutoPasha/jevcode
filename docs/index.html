@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jevcode — a coding agent driven by decisions, not prose</title>
+<meta name="description" content="a coding agent whose decisions are made by a model that cannot write text">
+<link rel="icon" href="assets/logo.svg">
+<style>
+  :root {
+    color-scheme: light dark;
+    --surface: #fcfcfb; --panel: #ffffff; --text: #0b0b0b; --muted: #52514e;
+    --line: #e5e4e0; --accent: #2a78d6; --accent-2: #eb6834;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #131312; --panel: #1a1a19; --text: #f6f5f2; --muted: #c3c2b7;
+      --line: #2d2d2b; --accent: #3987e5; --accent-2: #d95926;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface); color: var(--text);
+    font: 16px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 20px 96px; }
+  header { display: flex; gap: 20px; align-items: center; margin-bottom: 8px; }
+  header img { width: 76px; height: 76px; }
+  h1 { font-size: 40px; margin: 0; letter-spacing: -0.02em;
+       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .tagline { color: var(--muted); font-size: 18px; margin: 4px 0 0; }
+  h2 { font-size: 21px; margin: 44px 0 10px; letter-spacing: -0.01em; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+  .btn {
+    display: inline-block; padding: 9px 16px; border-radius: 9px;
+    border: 1px solid var(--line); text-decoration: none; color: var(--text);
+    background: var(--panel); font-size: 14.5px;
+  }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; font-size: 13.5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; margin-top: 12px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; font-size: 13px;
+       text-transform: uppercase; letter-spacing: 0.04em; }
+  td.n { font-variant-numeric: tabular-nums; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 12px; margin-top: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+           border-radius: 12px; padding: 16px; }
+  .card b { display: block; font-size: 27px; letter-spacing: -0.02em; }
+  .card span { color: var(--muted); font-size: 13.5px; }
+  figure { margin: 18px 0; }
+  figure img { width: 100%; max-width: 580px; border: 1px solid var(--line);
+                border-radius: 12px; background: var(--panel); }
+  footer { margin-top: 56px; color: var(--muted); font-size: 13.5px;
+            border-top: 1px solid var(--line); padding-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <img src="assets/logo.svg" alt="">
+  <div>
+    <h1>jevcode</h1>
+    <p class="tagline">a coding agent whose decisions are made by a model that cannot write text</p>
+  </div>
+</header>
+
+<div class="row">
+  <a class="btn primary" href="https://github.com/AutoPasha/jevcode">Source</a>
+  <a class="btn" href="https://github.com/AutoPasha/jevcode#install">Install</a>
+  <a class="btn" href="https://github.com/AutoPasha/jevcode/tree/main/bench">The benchmark</a>
+</div>
+
+<h2>The idea</h2>
+<p>
+  Jev answers typed questions — is this true, which of these, where on this
+  scale — with calibrated probabilities, in about two hundred milliseconds, up
+  to 256 of them in one request. It cannot write a line of code, and that is
+  the point: decisions become almost free, so the agent asks about everything
+  before it moves, and a small fast model does the typing under instructions it
+  never chose.
+</p>
+
+<div class="cards"><div class="card"><b>75%</b><span>of tasks solved by jevcode</span></div><div class="card"><b>24s</b><span>median, start to green tests</span></div><div class="card"><b>148</b><span>decisions per task</span></div><div class="card"><b>4</b><span>tasks, each judged by its own tests</span></div></div>
+
+<h2>Measured</h2>
+<p>The first end-to-end run, before the comparison harness existed. Numbers transcribed from bench/endtoend.py output; writer qwen3.5-9b through a gateway, six drafts per edit. Cost was not recorded per task in that run, so the cost chart is absent here.</p>
+<figure><img src="assets/solved.svg" alt="Solved, by task"></figure><figure><img src="assets/speed.svg" alt="Seconds per task"></figure>
+
+<h2>The table</h2>
+<table><tr><th>agent</th><th>solved</th><th>median time</th><th>cost per task</th></tr><tr><td>jevcode</td><td class="n">3/4 (75%)</td><td class="n">24.4s</td><td class="n">—</td></tr></table>
+
+<h2>Try it</h2>
+<pre>pipx install git+https://github.com/AutoPasha/jevcode
+jevcode --demo        # the whole interface, no key, nothing charged
+jevcode               # a session in this directory</pre>
+
+<footer>
+  Measurements from 2026-09-20 07:30. Everything on this page is generated from
+  <code>bench/results.json</code> by <code>bench/site.py</code> — re-run the
+  benchmark and the page changes with it. MIT licensed.
+</footer>
+
+</div>
+</body>
+</html>

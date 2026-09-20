@@ -40,9 +40,11 @@ class Agent:
     def __init__(self, task: str, root: str = ".", one: SystemOne | None = None,
                  writer: Writer | None = None, trace: Trace | None = None,
                  max_steps: int = 24, candidates: int = 6, dry_run: bool = False,
-                 allow_commands: bool = True):
+                 allow_commands: bool = True, permit=None, instructions: str = "",
+                 settle_at: int = 0, settle_grace: float = 2.5, history: list | None = None,
+                 repo: Repo | None = None):
         self.task = task
-        self.repo = Repo(root)
+        self.repo = repo or Repo(root)
         self.one = one or SystemOne()
         self.writer = writer or Writer()
         self.trace = trace or Trace()
@@ -50,6 +52,11 @@ class Agent:
         self.candidates = candidates
         self.dry_run = dry_run
         self.allow_commands = allow_commands
+        self.permit = permit
+        self.instructions = instructions
+        self.settle_at = settle_at
+        self.settle_grace = settle_grace
+        self.earlier = list(history or [])
 
         self.history: list = []
         self.open_path: str | None = None
@@ -73,6 +80,10 @@ class Agent:
     def state(self) -> dict:
         """What Jev sees. Small on purpose: unrelated context costs accuracy."""
         state = {"task": self.task, "history": self.history[-MAX_HISTORY:]}
+        if self.instructions:
+            state["project_rules"] = self.instructions[:6000]
+        if self.earlier:
+            state["earlier_in_this_conversation"] = self.earlier[-6:]
         if self.open_path:
             start, end = self.open_focus
             state["open_file"] = {
@@ -134,11 +145,13 @@ class Agent:
         if answers.p("needs_human") >= questions.HUMAN:
             self.trace.record("stop", why="needs_human", p=answers.p("needs_human"))
             return Outcome(False, "needs a decision only a person can make")
-        if answers.p("done") >= questions.DONE and self.edits:
+        unfinished = ("more_places" in answers
+                      and answers.p("more_places") >= questions.MORE_PLACES)
+        if answers.p("done") >= questions.DONE and self.edits and not unfinished:
             self.trace.record("stop", why="done", p=answers.p("done"))
             return Outcome(True, "task carried out and checked")
 
-        action, ranked = self._choose(answers)
+        action, ranked = self._choose(answers, unfinished)
         self.trace.step(number, action, dict(ranked).get(action, 0.0),
                         answers.confidence("action"))
         self.trace.options(ranked)
@@ -153,7 +166,7 @@ class Agent:
         }[action]
         return handler(answers)
 
-    def _choose(self, answers) -> tuple:
+    def _choose(self, answers, unfinished: bool = False) -> tuple:
         """Expected value, not the raw pick.
 
         `action` says which move looks right; `worth_*` says whether that move
@@ -164,7 +177,12 @@ class Agent:
         ranked = []
         for name, p in answers.ranked("action"):
             worth = answers.p("worth_" + name) if ("worth_" + name) in answers else 1.0
-            ranked.append((name, round(p * (0.25 + 0.75 * worth), 4)))
+            weight = p * (0.25 + 0.75 * worth)
+            if unfinished and name == "finish":
+                # The change is not finished elsewhere: stopping is not an option
+                # yet, however attractive it looks from here.
+                weight *= 0.1
+            ranked.append((name, round(weight, 4)))
         ranked.sort(key=lambda kv: -kv[1])
         action = ranked[0][0]
         if action == "edit" and not self.open_path:
@@ -240,7 +258,8 @@ class Agent:
                           % (path, region.label, self.candidates))
         result = patch.write(self.one, self.writer, self.repo, path,
                              region.start, region.end, self.task, n=self.candidates,
-                             related=self.related_code(path), failure=self.last_failure)
+                             related=self.related_code(path), failure=self.last_failure,
+                             settle_at=self.settle_at, settle_grace=self.settle_grace)
         for c in result.candidates:
             self.trace.record("candidate", letter=c.letter, rejected=c.rejected,
                               p=c.probability, works=c.works, scope=c.scope,
@@ -265,6 +284,14 @@ class Agent:
                                                        region.end, result.chosen.code), path))
             self.note("would edit %s %s (dry run)" % (path, region.label))
             return Outcome(True, "dry run: proposed a change to %s" % path)
+
+        if not self._permitted("edit", path, act.diff(
+                self.repo.read(path),
+                act.replace_region(self.repo.read(path), region.start, region.end,
+                                   result.chosen.code), path)):
+            self.trace.bad("the change to %s was declined" % path)
+            self.note("the person declined the change to %s" % path)
+            return None
 
         applied = self._apply_best(path, region, result)
         if applied is None:
@@ -372,8 +399,56 @@ class Agent:
         return answers.value("verdict") < 0.5 and answers.p("our_fault") < 0.4
 
     def _create(self, answers) -> Outcome | None:
-        self.trace.detail("creating a new file is not wired up yet; reading instead")
-        return self._read(answers)
+        """Make a file that does not exist yet: pick the path, then write it whole."""
+        options = locate.new_file_options(self.repo, self.task)
+        if not options:
+            self.trace.detail("nowhere obvious to put a new file; reading instead")
+            return self._read(answers)
+        a = self.one.ask({"task": self.task,
+                          "repository": {"name": os.path.basename(self.repo.root),
+                                         "files": self.repo.files()[:150]}},
+                         questions.pick_new_file(options, self.task))
+        if a.p("needed") < questions.NEW_FILE:
+            self.trace.detail("a new file is not what the task needs (%.2f)" % a.p("needed"))
+            self.note("considered creating a file; the task does not call for one")
+            return self._read(answers)
+        path = a.pick("path")
+        self.trace.detail("creating %s (p=%.2f)" % (path, a.probs("path").get(path, 0.0)))
+        self.trace.record("create", path=path, needed=a.p("needed"),
+                          ranked=a.ranked("path")[:4])
+
+        result = patch.create(self.one, self.writer, self.repo, path, self.task,
+                              n=max(3, self.candidates // 2),
+                              related=self.related_code(path),
+                              settle_at=self.settle_at, settle_grace=self.settle_grace)
+        if not result.chosen:
+            self.trace.bad(result.reason)
+            self.note("tried to create %s but every candidate failed the checks" % path)
+            return None
+        body = result.chosen.code
+        if self.dry_run:
+            self.trace.say(act.diff("", body, path))
+            self.note("would create %s (dry run)" % path)
+            return Outcome(True, "dry run: proposed a new file %s" % path)
+        if not self._permitted("create", path, act.diff("", body, path)):
+            self.note("the person declined the new file %s" % path)
+            return None
+        edit = act.create_file(self.repo, path, body)
+        edit.before = ""                  # so undo removes the file rather than blanking it
+        self.edits.append(edit)
+        self._shortlist = None
+        self.repo._files = None
+        self.open_path = path
+        self.opened[path] = (1, OPEN_WINDOW)
+        self.open_focus = (1, min(len(body.splitlines()), OPEN_WINDOW))
+        self.trace.good("created %s (%d lines)" % (path, len(body.splitlines())))
+        self.note("created %s (%d lines)" % (path, len(body.splitlines())))
+        return None
+
+    def _permitted(self, kind: str, key: str, preview: str = "") -> bool:
+        if self.permit is None:
+            return True
+        return self.permit.allows(kind, key, preview)
 
     def _run(self, answers) -> Outcome | None:
         if "command" not in answers:
@@ -385,6 +460,10 @@ class Agent:
         if not verdict:
             self.trace.bad("refused `%s`: %s" % (command, verdict.reason))
             self.note("refused to run %r: %s" % (command, verdict.reason))
+            return None
+        if not self._permitted("run", command):
+            self.trace.bad("declined: `%s`" % command)
+            self.note("the person declined to run %r" % command)
             return None
         run = act.run(command, self.repo.root)
         self.checks.append({"command": command, "ok": run.ok, "output": run.output[-600:]})

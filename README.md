@@ -1,4 +1,14 @@
-# jevcode
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="jevcode" width="720">
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#in-the-terminal">Terminal</a> ·
+  <a href="#what-it-does-on-real-work">Measurements</a> ·
+  <a href="#against-other-agents">Comparison</a> ·
+  <a href="#how-a-step-works">How it works</a>
+</p>
 
 A coding agent whose decisions are made by a model that cannot write a single
 character of code.
@@ -35,6 +45,58 @@ done — task carried out and checked
 Every number on screen is a probability the model returned, not a summary of
 what it was thinking. When the agent goes somewhere odd you can see which
 question it answered badly, and fix that question.
+
+## In the terminal
+
+`jevcode` with no arguments opens a session in the current directory. It is a
+prompt, not a dashboard: everything scrolls, everything can be copied out, and
+the only thing that repaints is the status line.
+
+<p align="center">
+  <img src="docs/assets/session.svg" alt="a jevcode session in the terminal" width="720">
+</p>
+
+<sup>Recorded with `jevcode --demo`, which answers from a table so the interface
+can be shown without a key. The same recording moving:
+[docs/assets/demo.svg](docs/assets/demo.svg), and the raw cast beside it if you
+would rather replay it yourself.</sup>
+
+- `@path` puts a file in front of the agent, matched on any tail of its path.
+- `!command` runs a shell command yourself without leaving.
+- `/undo` and `/redo` move the files, not just the transcript — the text before
+  and after every edit is kept in the session, so undo works in a directory that
+  is not a git repository at all.
+- Sessions survive the terminal closing: `jevcode -c` carries on, `/sessions`
+  lists them.
+- Before an edit is applied or a command is run you get the diff and a question,
+  with "yes, and stop asking" as the second option. `--permission allow` for a
+  script, `deny` to watch it think without letting it touch anything.
+- `AGENTS.md` is read if the project has one — the same file the other terminal
+  agents look for.
+
+| command | |
+| --- | --- |
+| `/help` | the list |
+| `/new` `/clear` | start over |
+| `/sessions` `/resume` | list and switch |
+| `/undo` `/redo` | move the files back and forward |
+| `/diff` | everything this session changed |
+| `/cost` | decisions, requests, seconds, money |
+| `/models` `/model <name>` | who decides, who writes, swap the writer |
+| `/details` | show or hide each decision as it is made |
+| `/permission ask\|allow\|deny` | how much to ask |
+| `/init` | write an `AGENTS.md` |
+| `/export` `/editor` `/compact` `/exit` | |
+
+Try the whole thing without a key:
+
+```bash
+jevcode --demo
+```
+
+That opens a throwaway sample project with one real bug in it and answers from a
+canned table — no model is called and nothing is charged. It is a tour of the
+interface, not of the quality; every number in this README comes from real runs.
 
 ## Why it is shaped this way
 
@@ -87,9 +149,21 @@ with a known answer. No embeddings, no vector store, nothing to keep fresh —
 every run reads the tree from scratch: **13/15 correct**, 30 questions in 15
 requests, 12 seconds total.
 
-**Four repositories end to end.** `bench/tasks/` holds four small projects, each
-with a feature missing and a failing test that demands it. The agent gets one
-sentence and the directory; the project's own tests decide. No partial credit.
+**Small repositories end to end.** `bench/tasks/` holds nine small projects,
+each with a feature missing and a failing test that demands it. The agent gets
+one sentence and the directory; the project's own tests decide. No partial
+credit. The charts below are drawn straight from the results file by
+`bench/chart.py`, so they cannot drift from the numbers.
+
+<p align="center">
+  <img src="docs/assets/solved.svg" alt="Solved, by task" width="560"><br>
+  <img src="docs/assets/speed.svg" alt="Seconds per task" width="560">
+</p>
+
+The four tasks above are the set as it stood on 2026-09-20; five more —
+creating a file from scratch, threading an argument through two modules, a TTL
+bug, a `--json` flag, and a JavaScript project — were added afterwards and are
+waiting on the next run.
 
 | task | solved | steps | decisions | requests | wall |
 | --- | --- | --- | --- | --- | --- |
@@ -103,6 +177,31 @@ decision problem: point `JEVCODE_WRITER_MODEL` at inception/mercury-2 and the
 same agent solves it in **2 steps, 4 requests and 15 seconds**. Nothing else
 changes — which is the argument for keeping the decisions and the typing in
 separate models.
+
+## Against other agents
+
+The only comparison worth printing is one you can re-run, so the harness is in
+the repository rather than the claims.
+
+```bash
+cp bench/contestants.json.example bench/contestants.json   # edit to what you have
+python3 bench/compare.py --who jevcode,opencode --repeat 3
+python3 bench/chart.py                                     # redraw the pictures
+```
+
+Every contestant gets an untouched copy of the same directory, the same
+sentence, the same time limit, and is judged by the project's own tests. No
+prompt tuned per agent, no retries, no partial credit. `contestants.json` is a
+plain list of command templates with `{dir}` and `{task}` in them — it is yours
+to read and to argue with, which is the point.
+
+What gets measured: how often the tests go green, wall-clock seconds, and what
+the run cost where the provider reports it. Those are three different units and
+they never share an axis.
+
+> The head-to-head table lands here after the next run. The numbers above are
+> jevcode on its own; putting another agent's name in a table before it has run
+> would be a worse sin than an empty section.
 
 ## Install
 
@@ -128,15 +227,29 @@ six times.
 ## Use
 
 ```bash
-jevcode "rename the --verbose flag to --loud everywhere"
-jevcode --dry-run "add retries to the HTTP client"   # show the patch, change nothing
-jevcode where "the retry backoff"                    # find code, two requests
-jevcode plan "add a discount argument to Cart.total" # three moves ahead, one look
-jevcode --trace run.jsonl "..."                      # every probability, on disk
+jevcode                                  # a session here
+jevcode ../other-project                 # ...or somewhere else
+jevcode -c                               # carry on where you left off
+jevcode --demo                           # tour it with no key at all
+
+jevcode run "rename the --verbose flag to --loud everywhere"
+jevcode run --dry-run "add retries to the HTTP client"   # the patch, applied to nothing
+jevcode run --format json "..."                          # for scripts and CI
+jevcode where "the retry backoff"                        # find code, two requests
+jevcode plan "add a discount argument to Cart.total"     # three moves ahead, one look
+jevcode init                                             # write an AGENTS.md
+jevcode auth login                                       # save the two keys
+jevcode session list                                     # what you have been doing
+jevcode stats --days 7                                   # what it has cost you
 ```
 
 Useful flags: `-C DIR` to work somewhere else, `-n 8` for more drafts per edit,
-`--no-commands` to forbid running anything at all, `--max-steps`.
+`--permission allow|deny`, `--no-commands` to forbid running anything at all,
+`--max-steps`, `--trace run.jsonl` to put every probability on disk.
+
+Settings layer, each beating the one before it: the defaults, `~/.config/jevcode/config.json`,
+`.jevcode.json` in the project, the environment, then the flags you typed.
+`jevcode config` prints the result and where each part came from.
 
 ## How a step works
 
@@ -208,23 +321,26 @@ does not count, it is not a calculator, and accuracy drops as you pile
 irrelevant detail into the state. Everything numeric in this agent is done in
 Python for that reason.
 
-Beyond the model: jevcode edits one file at a time. Two functions in the same
+Beyond the model: jevcode edits one region at a time. Two functions in the same
 file are fine — a region that fails its tests is retried wider, first with its
-neighbours and then as the whole file — but a change spread across five files
-takes five passes and may lose the thread between them. `create` is not wired
-up yet. There is no conversation — the task is stated once, and the
-agent either carries it out or stops. Large repositories are handled by grep and
-a 255-file shortlist, which is enough more often than it sounds, but it is not
-a substitute for knowing where things are.
+neighbours and then as the whole file — and since 0.2 the loop refuses to stop
+while "does this still need a change somewhere else" comes back high, so a
+two-file change is normal. Five files in one sentence is still optimistic.
+Large repositories are handled by grep and a 255-file shortlist, which is
+enough more often than it sounds, but it is not a substitute for knowing where
+things are. Nothing here is streamed token by token, because the model that
+decides has no tokens to stream.
 
-It is version 0.1. Bring a repository under version control and read the diff.
+It is version 0.2. Bring a repository under version control and read the diff.
 
 ## Running the benchmarks
 
 ```bash
 python3 bench/locate.py                        # can it find the right file
 python3 bench/bestofn.py --tasks 80 --n 6      # how much the judge adds
-python3 bench/endtoend.py                      # four repositories, four failing suites
+python3 bench/endtoend.py                      # every task, jevcode alone
+python3 bench/compare.py --who all --repeat 3  # jevcode against other agents
+python3 bench/chart.py                         # redraw the README's pictures
 python3 -m unittest discover -s tests          # everything that needs no network
 ```
 

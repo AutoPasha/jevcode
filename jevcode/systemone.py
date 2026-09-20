@@ -23,6 +23,8 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from . import net
+
 TYPESAFE_URL = "https://api.typesafe.ai/v1/systemone"
 DEFAULT_MODEL = "jev-latest"
 
@@ -133,33 +135,26 @@ class SystemOne:
             raise RuntimeError(
                 "no System One key: set TYPESAFE_API_KEY, or JEVCODE_SYSTEMONE_KEY "
                 "together with JEVCODE_SYSTEMONE_URL to go through a gateway")
-        body = json.dumps({"model": self.model, "state": state, "questions": questions},
-                          ensure_ascii=False).encode("utf-8")
+        payload = {"model": self.model, "state": state, "questions": questions}
+        headers = {"Authorization": "Bearer " + self.key, "User-Agent": "jevcode"}
         delay = 0.7
         for attempt in range(self.retries + 1):
-            started = time.time()
-            req = urllib.request.Request(self.url, data=body, headers={
-                "Authorization": "Bearer " + self.key,
-                "Content-Type": "application/json",
-                "User-Agent": "jevcode",
-            })
             try:
-                raw = urllib.request.urlopen(req, timeout=self.timeout).read()
-            except urllib.error.HTTPError as ex:
-                detail = ex.read().decode("utf-8", "replace")[:500]
-                if ex.code in RETRY_STATUS and attempt < self.retries:
+                out, spent = net.post_json(self.url, payload, headers, self.timeout)
+            except net.HTTPError as ex:
+                if ex.status in RETRY_STATUS and attempt < self.retries:
                     time.sleep(delay)
                     delay *= 2
                     continue
-                raise RuntimeError("System One returned %d: %s" % (ex.code, detail)) from None
-            except urllib.error.URLError as ex:
+                raise RuntimeError("System One returned %d: %s"
+                                   % (ex.status, ex.body[:500])) from None
+            except OSError as ex:
                 if attempt < self.retries:
                     time.sleep(delay)
                     delay *= 2
                     continue
                 raise RuntimeError("System One unreachable: %s" % ex) from None
-            out = json.loads(raw)
             self.last_raw = out
-            self.usage.add(out, len(questions), time.time() - started)
+            self.usage.add(out, len(questions), spent)
             return Answers(out["answers"])
         raise RuntimeError("System One: out of retries")

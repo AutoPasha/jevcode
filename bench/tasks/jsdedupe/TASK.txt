@@ -1,0 +1,1 @@
+make dedupe keep the first occurrence of each item and take an optional key function, so objects can be deduplicated by a field

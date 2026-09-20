@@ -113,6 +113,10 @@ def step(files: dict, regions: dict, commands: dict, queries: dict,
             "action": ACTIONS[name]["what"],
         })
     if has_edits:
+        q["more_places"] = noul({
+            "question": "Does `task` still need a change somewhere other than the files listed in `edits_made`?",
+        }, {"true": "Another file or another function has to change as well for the task to be carried out",
+            "false": "Everything the task asks for is already in the edits listed"})
         q["regressed"] = noul({
             "question": "Do the edits listed in `history` change behaviour that `task` did not ask to change?",
         }, {"true": "Something unrelated to the task was altered or removed",
@@ -225,3 +229,23 @@ def read_result(text: str, task: str) -> dict:
             "output": text[-4000:],
         }),
     }
+
+
+def pick_new_file(options: dict, task: str) -> dict:
+    """Where a file that does not exist yet should go, and whether to make one."""
+    return {
+        "path": choice({
+            "question": "Which of these paths should a new file created for `task` have?",
+            "task": task,
+            "how": "Prefer a path the task names, then the directory where files of this kind already live.",
+        }, options),
+        "needed": noul({
+            "question": "Does carrying out `task` require a file that does not exist yet?",
+            "task": task,
+        }, {"true": "The task asks for something new that has no place in the existing files",
+            "false": "It can be done by changing files that already exist"}),
+    }
+
+
+MORE_PLACES = 0.60     # keep going: the change is not finished elsewhere
+NEW_FILE = 0.55        # a new file is genuinely called for

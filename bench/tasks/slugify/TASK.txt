@@ -1,0 +1,1 @@
+add a slugify module with a slugify(text) function: lowercase, spaces and punctuation to single dashes, no leading or trailing dash

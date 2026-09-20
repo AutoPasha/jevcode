@@ -1,0 +1,1 @@
+let the caller choose how many rows a page holds: add a per_page argument to paginate and pass it through list_page

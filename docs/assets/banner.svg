@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="220" viewBox="0 0 880 220" role="img" aria-label="jevcode — a coding agent whose decisions are made by a model that cannot write text">
+  <title>jevcode</title>
+  <style>
+    .wm{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:54px;font-weight:700;fill:#fcfcfb}
+    .tag{font-family:ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:17px;fill:#c3c2b7}
+    .pill{font-family:ui-sans-serif,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;font-size:13px;fill:#c3c2b7}
+  </style>
+  <rect x="0" y="0" width="880" height="220" rx="16" fill="#1a1a19"/>
+
+  <g transform="translate(44,46)">
+    <rect x="0" y="0" width="128" height="128" rx="28" fill="#111110"/>
+    <rect x="26" y="34" width="46" height="10" rx="5" fill="#2a78d6"/>
+    <rect x="26" y="52" width="30" height="10" rx="5" fill="#3987e5" opacity="0.72"/>
+    <rect x="26" y="70" width="17" height="10" rx="5" fill="#3987e5" opacity="0.45"/>
+    <path d="M84 30 L104 54 L84 78" fill="none" stroke="#eb6834" stroke-width="10"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="26" y="92" width="76" height="8" rx="4" fill="#c3c2b7" opacity="0.55"/>
+  </g>
+
+  <text class="wm" x="208" y="92">jevcode</text>
+  <text class="tag" x="210" y="124">a coding agent whose decisions are made by a model</text>
+  <text class="tag" x="210" y="148">that cannot write a single character</text>
+
+  <g transform="translate(210,168)">
+    <rect x="0" y="0" width="172" height="26" rx="13" fill="#232321"/>
+    <text class="pill" x="14" y="18">hundreds of decisions</text>
+    <rect x="184" y="0" width="150" height="26" rx="13" fill="#232321"/>
+    <text class="pill" x="198" y="18">one request per step</text>
+    <rect x="346" y="0" width="150" height="26" rx="13" fill="#232321"/>
+    <text class="pill" x="360" y="18">no index, no vectors</text>
+  </g>
+</svg>

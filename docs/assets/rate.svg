@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="580" height="120" viewBox="0 0 580 120" role="img" class="s" aria-label="Solved overall">
+<style>.s{font-family:ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif}.t{font-weight:600;font-size:15px}.l{font-size:12.5px}.v{font-size:12.5px;font-weight:600}.c{font-size:11.5px}text{fill:#0b0b0b}.m{fill:#52514e}rect.bg{fill:#fcfcfb}.s1{fill:#2a78d6}@media (prefers-color-scheme: dark){text{fill:#ffffff}.m{fill:#c3c2b7}rect.bg{fill:#1a1a19}.s1{fill:#3987e5}}</style>
+<rect class="bg" x="0" y="0" width="580" height="120" fill="#fcfcfb"/>
+<text class="t" x="16.0" y="26.0" fill="#0b0b0b">Solved overall</text>
+<text class="c m" x="16.0" y="44.0" fill="#52514e">every task, every run</text>
+<text class="l m" x="106.0" y="81.0" text-anchor="end" fill="#52514e">all tasks</text>
+<rect class="s1" x="118" y="68.0" width="398.0" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="524.0" y="82.0" fill="#0b0b0b">75%</text>
+</svg>

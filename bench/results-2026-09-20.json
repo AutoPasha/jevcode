@@ -1,0 +1,20 @@
+{
+  "when": "2026-09-20 07:30",
+  "note": "The first end-to-end run, before the comparison harness existed. Numbers transcribed from bench/endtoend.py output; writer qwen3.5-9b through a gateway, six drafts per edit. Cost was not recorded per task in that run, so the cost chart is absent here.",
+  "tasks": ["cart", "csvparse", "duration", "retry"],
+  "agents": ["jevcode"],
+  "runs": [
+    {"agent": "jevcode", "task": "cart", "attempt": 1, "passed": true,
+     "seconds": 15.7, "cost": 0.0, "currency": "", "decisions": 73, "requests": 6,
+     "drafts": 6, "note": "task carried out and checked"},
+    {"agent": "jevcode", "task": "duration", "attempt": 1, "passed": true,
+     "seconds": 26.0, "cost": 0.0, "currency": "", "decisions": 107, "requests": 8,
+     "drafts": 6, "note": "task carried out and checked"},
+    {"agent": "jevcode", "task": "retry", "attempt": 1, "passed": true,
+     "seconds": 22.9, "cost": 0.0, "currency": "", "decisions": 111, "requests": 14,
+     "drafts": 12, "note": "two functions, region widened once"},
+    {"agent": "jevcode", "task": "csvparse", "attempt": 1, "passed": false,
+     "seconds": 101.6, "cost": 0.0, "currency": "", "decisions": 302, "requests": 50,
+     "drafts": 36, "note": "ran out of steps; solved in 15s with a different writer"}
+  ]
+}
