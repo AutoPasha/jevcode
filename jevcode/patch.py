@@ -42,6 +42,33 @@ The exact lines you are replacing:
 Write the replacement for lines {start}-{end}. Keep everything the task does not
 ask you to change. Reply with one fenced code block and nothing else."""
 
+WHOLE_SYSTEM = (
+    "You are the writing half of a coding agent. Another model has decided that "
+    "what you are given is a skeleton to be written, not code to be patched. "
+    "Write it in full: every branch and every helper it needs, fully "
+    "implemented. No explanation, no diff markers, no placeholders and no "
+    "`pass` — a single fenced code block containing the finished code.")
+
+WHOLE_BRIEF = """Task: {task}
+
+Write {what} in full. What is there now is only a skeleton — the names and the
+arguments are right, the bodies are empty, and your job is to implement them
+without changing what anything else already calls.
+{context}
+What you are replacing:
+
+{region}
+{related}{failure}
+Reply with one fenced code block holding {what}, with everything actually
+implemented and nothing left as a placeholder. Nothing else."""
+
+WHOLE_CONTEXT = """
+The file it lives in, with line numbers for orientation only (do not include
+them in your reply). You are replacing lines {start}-{end} of it:
+
+{context}
+"""
+
 RELATED = """
 Other code that has to keep working with your change:
 
@@ -85,65 +112,140 @@ class PatchResult:
         return [c for c in self.candidates if c.alive]
 
 
-def context_window(repo, rel: str, start: int, end: int, margin: int = 40) -> str:
-    total = len(repo.read(rel).splitlines())
-    return repo.numbered(rel, max(1, start - margin), min(total, end + margin))
-
-
-def write(one, writer, repo, rel: str, start: int, end: int, task: str,
-          n: int = 6, related: str = "", failure: tuple = (),
-          settle_at: int = 0, settle_grace: float = 2.5) -> PatchResult:
-    """n candidate replacements for one region, filtered in code, ranked by Jev.
-
-    `related` is other code the change has to keep working with — usually the
-    test that describes the change. `failure` is what the project's own command
-    said about the previous attempt, so the writer is told what not to repeat.
-    """
-    body = repo.read(rel).splitlines()
-    region_text = "\n".join(body[start - 1:end])
-    prompt = BRIEF.format(
-        task=task, path=rel, start=start, end=end,
-        context=context_window(repo, rel, start, end),
-        region=region_text or "(empty)",
-        related=RELATED.format(body=related[:4000]) if related else "",
-        failure=FAILURE.format(command=failure[0], output=failure[1][-1500:]) if failure else "")
-    drafts = writer.drafts(prompt, n=n, system=SYSTEM,
-                           enough=settle_at, grace=settle_grace)
-
+def _sift(rel: str, drafts: list, region_text: str, merge) -> list:
+    """Facts before opinion: what does not change anything, does not parse, or
+    is a copy of another draft is rejected here, for free, before Jev is asked
+    about anything. Shared by the two ways of writing, so a truncated reply is
+    labelled the same whether it was a patch or a whole file."""
     seen, cands = {}, []
     for draft in drafts:
         letter = LETTERS[len(cands)]
         cand = Candidate(letter, draft.code, draft.text, seconds=draft.seconds)
         if draft.error:
             cand.rejected = "writer failed: " + draft.error
+        elif draft.truncated:
+            cand.rejected = "cut off at the token limit"
         elif not draft.code.strip():
             cand.rejected = "empty"
         elif draft.code.strip() == region_text.strip():
             cand.rejected = "identical to the current code"
         else:
-            merged = act.replace_region(repo.read(rel), start, end, draft.code)
-            problem = act.syntax_error(rel, merged)
+            problem = act.syntax_error(rel, merge(draft.code))
             if problem:
                 cand.rejected = "does not parse: " + problem
             elif draft.code.strip() in seen:
-                cands.append(cand)
                 cand.rejected = "same as candidate " + seen[draft.code.strip()]
-                continue
             else:
                 seen[draft.code.strip()] = letter
         cands.append(cand)
+    return cands
 
+
+def context_window(repo, rel: str, start: int, end: int, margin: int = 40) -> str:
+    total = len(repo.read(rel).splitlines())
+    return repo.numbered(rel, max(1, start - margin), min(total, end + margin))
+
+
+def budget(region_text: str, related: str, whole: bool) -> int:
+    """How much room the writer gets, sized to what it has been asked for.
+
+    A patch to one function fits in a fixed budget; a whole file written from a
+    skeleton does not, and a reply cut off halfway through a class is thrown out
+    as unparseable — which looks, from the trace, exactly like a model that
+    cannot write the task. Implementations run about the size of the tests that
+    describe them, so the tests set the ceiling.
+
+    The floor is high because the writers worth using now think before they
+    answer, and that thinking is spent out of the same allowance as the code.
+    Nothing is paid for room that goes unused; a first live run at half these
+    numbers spent longer asking twice than it would have spent asking once.
+    """
+    if not whole:
+        return 4000
+    chars = max(len(region_text), len(related) // 2, 1200)
+    return int(min(12000, max(8000, chars / 2.5)))
+
+
+def draft(one, writer, repo, rel: str, start: int, end: int, task: str,
+          n: int = 6, related: str = "", failure: tuple = (),
+          settle_at: int = 0, settle_grace: float = 2.5,
+          whole: bool = False, label: str = "") -> PatchResult:
+    """n candidate replacements for one region, filtered in code, not yet judged.
+
+    `related` is other code the change has to keep working with — usually the
+    test that describes the change. `failure` is what the project's own command
+    said about the previous attempt, so the writer is told what not to repeat.
+    `whole` says the region is a skeleton to be authored rather than code to be
+    patched — the whole file, or one empty class inside it — which changes both
+    the brief and how much room the writer is allowed.
+
+    Nothing here asks Jev anything. Judgement is a separate call because the
+    project's own tests usually answer the same question better and for free;
+    see `judge` for when there is nothing to run.
+    """
+    body = repo.read(rel).splitlines()
+    region_text = "\n".join(body[start - 1:end])
+    tail = (RELATED.format(body=related[:6000]) if related else "")
+    fail = (FAILURE.format(command=failure[0], output=failure[1][-1500:]) if failure else "")
+    if whole:
+        total = len(body)
+        partial = start > 1 or end < total
+        what = ("`%s` from %s" % (label, rel)) if (label and partial) else ("the whole of " + rel)
+        context = (WHOLE_CONTEXT.format(start=start, end=end,
+                                        context=context_window(repo, rel, start, end))
+                   if partial else "")
+        prompt = WHOLE_BRIEF.format(task=task, what=what, context=context,
+                                    region=region_text or "(it is empty)",
+                                    related=tail, failure=fail)
+        system = WHOLE_SYSTEM
+    else:
+        prompt = BRIEF.format(
+            task=task, path=rel, start=start, end=end,
+            context=context_window(repo, rel, start, end),
+            region=region_text or "(empty)", related=tail, failure=fail)
+        system = SYSTEM
+
+    room = budget(region_text, related, whole)
+    drafts = writer.drafts(prompt, n=n, system=system, max_tokens=room,
+                           enough=settle_at, grace=settle_grace)
+    merge = lambda code: act.replace_region(repo.read(rel), start, end, code)  # noqa: E731
+    cands = _sift(rel, drafts, region_text, merge)
     alive = [c for c in cands if c.alive]
+    if not alive and any(c.rejected.startswith("cut off") for c in cands):
+        # Every draft ran out of room. That is a budget the code chose badly,
+        # not a task the writer cannot do, so it is worth one more attempt with
+        # twice the space before giving up on the region.
+        drafts = writer.drafts(prompt, n=max(2, n // 2), system=system,
+                               max_tokens=min(room * 2, 16000),
+                               enough=0, grace=settle_grace)
+        cands = _sift(rel, drafts, region_text, merge)
+        alive = [c for c in cands if c.alive]
+
     if not alive:
         return PatchResult(cands, None, 0.0, "every candidate was rejected before judging")
     if len(alive) == 1:
         return PatchResult(cands, alive[0], 0.0, "only one candidate survived the checks")
+    return PatchResult(cands, None, 0.0, "%d candidates written" % len(alive))
 
+
+def judge(one, repo, rel: str, start: int, end: int, task: str,
+          result: PatchResult) -> PatchResult:
+    """Ask Jev which of the surviving candidates is the change the task asked for.
+
+    Only worth a request when the project cannot answer for itself. When there
+    is a test command, running each candidate says the same thing as a fact,
+    and a fact beats a probability every time.
+    """
+    alive = result.alive
+    if len(alive) <= 1:
+        result.chosen = alive[0] if alive else None
+        return result
+    body = repo.read(rel).splitlines()
     state = {
         "task": task,
         "file": rel,
         "context": context_window(repo, rel, start, end, margin=25),
-        "current_code": region_text,
+        "current_code": "\n".join(body[start - 1:end]),
         "candidates": {c.letter: c.code[:6000] for c in alive},
     }
     a = one.ask(state, questions.judge_patches([c.letter for c in alive], task))
@@ -153,8 +255,18 @@ def write(one, writer, repo, rel: str, start: int, end: int, task: str,
         c.works = a.p("works_" + c.letter)
         c.scope = a.p("scope_" + c.letter)
     ranked = sorted(alive, key=lambda c: -c.probability)
-    return PatchResult(cands, ranked[0], a.confidence("best"),
-                       "picked out of %d candidates" % len(alive))
+    result.chosen = ranked[0]
+    result.confidence = a.confidence("best")
+    result.reason = "picked out of %d candidates" % len(alive)
+    return result
+
+
+def write(one, writer, repo, rel: str, start: int, end: int, task: str, **kw) -> PatchResult:
+    """Draft and judge in one call, for callers with nothing to run the code against."""
+    result = draft(one, writer, repo, rel, start, end, task, **kw)
+    if result.chosen is not None or not result.alive:
+        return result
+    return judge(one, repo, rel, start, end, task, result)
 
 
 def next_best(result: PatchResult, exclude: set) -> Candidate | None:
@@ -200,28 +312,17 @@ def create(one, writer, repo, rel: str, task: str, n: int = 4, related: str = ""
     prompt = NEW_BRIEF.format(
         task=task, path=rel, tree=tree,
         related=RELATED.format(body=related[:4000]) if related else "")
-    drafts = writer.drafts(prompt, n=n, system=NEW_SYSTEM,
+    room = budget("", related, whole=True)
+    drafts = writer.drafts(prompt, n=n, system=NEW_SYSTEM, max_tokens=room,
                            enough=settle_at, grace=settle_grace)
-
-    seen, cands = {}, []
-    for draft in drafts:
-        letter = LETTERS[len(cands)]
-        cand = Candidate(letter, draft.code, draft.text, seconds=draft.seconds)
-        if draft.error:
-            cand.rejected = "writer failed: " + draft.error
-        elif not draft.code.strip():
-            cand.rejected = "empty"
-        else:
-            problem = act.syntax_error(rel, draft.code)
-            if problem:
-                cand.rejected = "does not parse: " + problem
-            elif draft.code.strip() in seen:
-                cand.rejected = "same as candidate " + seen[draft.code.strip()]
-            else:
-                seen[draft.code.strip()] = letter
-        cands.append(cand)
-
+    cands = _sift(rel, drafts, "", lambda code: code)
     alive = [c for c in cands if c.alive]
+    if not alive and any(c.rejected.startswith("cut off") for c in cands):
+        drafts = writer.drafts(prompt, n=max(2, n // 2), system=NEW_SYSTEM,
+                               max_tokens=min(room * 2, 16000), enough=0,
+                               grace=settle_grace)
+        cands = _sift(rel, drafts, "", lambda code: code)
+        alive = [c for c in cands if c.alive]
     if not alive:
         return PatchResult(cands, None, 0.0, "every candidate was rejected before judging")
     if len(alive) == 1:

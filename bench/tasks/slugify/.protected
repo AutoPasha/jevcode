@@ -1,0 +1,2 @@
+Makefile
+tests/test_slugify.py

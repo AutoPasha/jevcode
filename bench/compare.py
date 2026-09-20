@@ -18,6 +18,7 @@ better that you can read them than that they are hidden in here.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -37,28 +38,53 @@ CONTESTANTS = os.path.join(HERE, "contestants.json")
 
 # ------------------------------------------------------------------- tasks
 
-def task_names(only: str = "") -> list:
-    names = sorted(n for n in os.listdir(TASKS)
+def task_names(only: str = "", tasks: str = TASKS) -> list:
+    names = sorted(n for n in os.listdir(tasks)
                    if not n.startswith(".")
-                   and os.path.exists(os.path.join(TASKS, n, "TASK.txt")))
+                   and os.path.exists(os.path.join(tasks, n, "TASK.txt")))
     if only:
         wanted = {w.strip() for w in only.split(",") if w.strip()}
         names = [n for n in names if n in wanted]
     return names
 
 
-def task_text(name: str) -> str:
-    with open(os.path.join(TASKS, name, "TASK.txt"), encoding="utf-8") as fh:
+def task_text(name: str, tasks: str = TASKS) -> str:
+    with open(os.path.join(tasks, name, "TASK.txt"), encoding="utf-8") as fh:
         return fh.read().strip()
 
 
-def fresh_copy(name: str) -> str:
+def fresh_copy(name: str, tasks: str = TASKS) -> str:
     """An untouched copy of the task, without the caches a previous run left."""
     root = tempfile.mkdtemp(prefix="jevbench-%s-" % name)
     target = os.path.join(root, name)
-    shutil.copytree(os.path.join(TASKS, name), target,
+    shutil.copytree(os.path.join(tasks, name), target,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".git"))
     return target
+
+
+def protected(directory: str) -> dict:
+    """Checksums of the files a contestant is not allowed to touch.
+
+    A task built from a public benchmark ships a `.protected` list naming its
+    test files. Making tests pass by rewriting them is the oldest way to win a
+    benchmark, and the only defence that costs nothing is to look afterwards."""
+    listing = os.path.join(directory, ".protected")
+    if not os.path.exists(listing):
+        return {}
+    out = {}
+    with open(listing, encoding="utf-8") as fh:
+        for line in fh:
+            name = line.strip()
+            path = os.path.join(directory, name)
+            if name and os.path.exists(path):
+                out[name] = hashlib.sha256(open(path, "rb").read()).hexdigest()
+    return out
+
+
+def tampered(directory: str, before: dict) -> list:
+    """Which protected files came back different, if any."""
+    after = protected(directory)
+    return sorted(n for n in before if after.get(n) != before[n])
 
 
 def tests_pass(directory: str, timeout: int = 180) -> bool:
@@ -100,9 +126,16 @@ def run_builtin(directory: str, task: str, args) -> dict:
         note = outcome.reason
     except (RuntimeError, KeyboardInterrupt) as ex:
         note = str(ex)[:200]
+    same_money = (not writer_usage.currency
+                  or writer_usage.currency == usage.currency)
     return {"seconds": round(time.time() - started, 2),
-            "cost": round(usage.cost + writer_usage.cost, 6),
+            # Jev and the writer can be billed by different providers in
+            # different currencies; adding those up would invent an exchange
+            # rate nobody agreed to, so they stay apart unless they match.
+            "cost": round(usage.cost + (writer_usage.cost if same_money else 0.0), 6),
             "currency": usage.currency or writer_usage.currency,
+            "writer_cost": 0.0 if same_money else round(writer_usage.cost, 6),
+            "writer_currency": "" if same_money else writer_usage.currency,
             "decisions": usage.questions, "requests": usage.requests,
             "drafts": writer_usage.calls, "note": note}
 
@@ -121,8 +154,20 @@ def tidy(text: str, directory: str) -> str:
     return " ".join(text.split())[-300:]
 
 
+def quoted(task: str) -> str:
+    """The task text, safe to drop inside the double quotes of a template.
+
+    Our own tasks are one sentence each, but a public benchmark hands over a
+    whole page of instructions with backticks, dollars and quotes in it. Left
+    alone, the shell would read those as its own and the contestant would be
+    handed a different task than jevcode got — or none at all."""
+    for char in ("\\", '"', "$", "`"):
+        task = task.replace(char, "\\" + char)
+    return task
+
+
 def run_command(directory: str, task: str, spec: dict, timeout: int) -> dict:
-    command = spec["command"].replace("{dir}", directory).replace("{task}", task)
+    command = spec["command"].replace("{dir}", directory).replace("{task}", quoted(task))
     started = time.time()
     env = dict(os.environ, **(spec.get("env") or {}))
     try:
@@ -145,12 +190,19 @@ def main() -> int:
     ap.add_argument("--who", default="jevcode",
                     help="comma separated; `all` for everyone in contestants.json")
     ap.add_argument("--only", default="", help="run only these tasks, comma separated")
+    ap.add_argument("--tasks", default=TASKS,
+                    help="a directory of task directories; the public set is built by bench/polyglot.py")
     ap.add_argument("--repeat", type=int, default=1,
                     help="runs per task, to see the variance")
     ap.add_argument("--timeout", type=int, default=600, help="per run, seconds")
-    ap.add_argument("-n", "--candidates", type=int, default=6)
-    ap.add_argument("--max-steps", type=int, default=14)
-    ap.add_argument("--settle-at", type=int, default=4)
+    # A benchmark should measure the thing people install, so the knobs start
+    # where the shipped defaults are. The old 14-step ceiling here was below
+    # jevcode's own 24 and quietly cost us tasks the product would have had
+    # more attempts at, while contestants were bounded only by the clock.
+    from jevcode.config import DEFAULTS
+    ap.add_argument("-n", "--candidates", type=int, default=DEFAULTS["candidates"])
+    ap.add_argument("--max-steps", type=int, default=DEFAULTS["max_steps"])
+    ap.add_argument("--settle-at", type=int, default=DEFAULTS["settle_at"])
     ap.add_argument("--out", default=os.path.join(HERE, "results.json"))
     ap.add_argument("--results", default="", help="skip running; read this file")
     ap.add_argument("--table", action="store_true", help="print the markdown table")
@@ -169,26 +221,31 @@ def main() -> int:
                                                      ", ".join(everyone)), file=sys.stderr)
         return 2
 
-    names = task_names(args.only)
+    names = task_names(args.only, args.tasks)
     if not names:
-        print("no tasks in %s" % TASKS, file=sys.stderr)
+        print("no tasks in %s" % args.tasks, file=sys.stderr)
         return 2
 
     rows = []
     for name in names:
-        task = task_text(name)
+        task = task_text(name, args.tasks)
         for agent in who:
             for attempt in range(args.repeat):
-                directory = fresh_copy(name)
+                directory = fresh_copy(name, args.tasks)
                 before = tests_pass(directory)
+                fixed = protected(directory)
                 spec = everyone[agent]
                 if spec["kind"] == "builtin":
                     result = run_builtin(directory, task, args)
                 else:
                     result = run_command(directory, task, spec, args.timeout)
                 after = tests_pass(directory)
+                changed = tampered(directory, fixed)
+                if changed:
+                    result["note"] = ("edited the tests: %s; " % ", ".join(changed)
+                                      + result.get("note", ""))[:300]
                 row = dict(result, task=name, agent=agent, attempt=attempt + 1,
-                           passed=bool(after and not before))
+                           passed=bool(after and not before and not changed))
                 rows.append(row)
                 print("%-10s %-10s %s  %5.1fs  %s" % (
                     agent, name, "pass" if row["passed"] else "fail",
@@ -211,12 +268,16 @@ def summarise(rows: list) -> dict:
     for row in rows:
         entry = out.setdefault(row["agent"], {"runs": 0, "passed": 0, "seconds": [],
                                               "cost": 0.0, "currency": "",
+                                              "writer_cost": 0.0, "writer_currency": "",
                                               "decisions": 0, "drafts": 0})
         entry["runs"] += 1
         entry["passed"] += 1 if row["passed"] else 0
         entry["seconds"].append(row["seconds"])
         entry["cost"] += row.get("cost") or 0.0
         entry["currency"] = entry["currency"] or (row.get("currency") or "")
+        entry["writer_cost"] += row.get("writer_cost") or 0.0
+        entry["writer_currency"] = (entry["writer_currency"]
+                                    or (row.get("writer_currency") or ""))
         entry["decisions"] += row.get("decisions") or 0
         entry["drafts"] += row.get("drafts") or 0
     for entry in out.values():
@@ -232,6 +293,9 @@ def table(rows: list) -> str:
     for agent, entry in sorted(totals.items(), key=lambda kv: -kv[1]["rate"]):
         money = ("%.2f %s" % (entry["cost"] / max(entry["runs"], 1), entry["currency"])
                  if entry["cost"] else "—")
+        if entry.get("writer_cost"):
+            money += " + %.4f %s" % (entry["writer_cost"] / max(entry["runs"], 1),
+                                     entry["writer_currency"])
         lines.append("| %s | %d/%d (%d%%) | %.1fs | %s |"
                      % (agent, entry["passed"], entry["runs"], entry["rate"],
                         entry["median_seconds"], money))

@@ -161,31 +161,40 @@ credit. The charts below are drawn straight from the results file by
   <img src="docs/assets/speed.svg" alt="Seconds per task" width="560">
 </p>
 
-All nine ran on 2026-09-20, one attempt each, writer qwen3.5-9b:
+All nine ran on 2026-09-20, one attempt each, writer MiniMax-M2.7:
 
 | task | solved | decisions | requests | wall | cost |
 | --- | --- | --- | --- | --- | --- |
-| ttlcache — entries outliving their TTL | yes | 56 | 4 | 4.6s | 0.17 RUB |
-| cart — a discount argument | yes | 61 | 5 | 20.3s | 0.18 RUB |
-| retry — a max_delay cap in two functions | yes | 112 | 14 | 22.6s | 0.51 RUB |
-| jsonflag — a `--json` flag on a CLI | yes | 225 | 15 | 44.5s | 0.77 RUB |
-| duration — report whole days | yes | 227 | 15 | 65.2s | 0.88 RUB |
-| slugify — a new module from scratch | no | 238 | 32 | 22.6s | 0.93 RUB |
-| jsdedupe — dedupe in a JavaScript project | no | 236 | 26 | 49.8s | 0.87 RUB |
-| pagesize — thread an argument through two modules | no | 301 | 49 | 74.7s | 2.05 RUB |
-| csvparse — doubled quotes inside a quoted field | no | 305 | 51 | 201.7s | 2.26 RUB |
+| ttlcache — entries outliving their TTL | yes | 14 | 1 | 12.4s | 0.04 RUB |
+| jsdedupe — dedupe in a JavaScript project | yes | 14 | 1 | 14.3s | 0.04 RUB |
+| duration — report whole days | yes | 14 | 1 | 22.5s | 0.04 RUB |
+| jsonflag — a `--json` flag on a CLI | yes | 14 | 1 | 22.6s | 0.04 RUB |
+| cart — a discount argument | yes | 14 | 1 | 23.1s | 0.04 RUB |
+| csvparse — doubled quotes inside a quoted field | yes | 14 | 1 | 51.0s | 0.04 RUB |
+| slugify — a new module from scratch | yes | 81 | 7 | 57.2s | 0.28 RUB |
+| retry — a max_delay cap in two functions | yes | 30 | 2 | 65.5s | 0.09 RUB |
+| pagesize — thread an argument through two modules | yes | 82 | 6 | 83.1s | 0.25 RUB |
 
-**Five out of nine**, 0.96 RUB (about $0.011) per task including the failures.
-The pattern in that table is not subtle: every solved task is under 16 requests
-and every failed one is over 25. The agent does not slowly get a hard task
-wrong — it either sees the place in the first few steps or spends the whole
-budget circling. When the run ends with `ran out of steps`, more steps would
-not have helped; a cheaper way to notice it is lost would have.
+**Nine out of nine**, 0.10 RUB plus about $0.016 of writer per task. Six of them
+take a single request to Jev: one fan-out of questions, one region written six
+ways, one test run that picks the winner, done.
 
-The fourth-hardest of these is a writer problem rather than a decision problem:
-point `JEVCODE_WRITER_MODEL` at inception/mercury-2 and csvparse comes out in
-**2 steps, 4 requests and 15 seconds**. Nothing else changes — which is the
-argument for keeping the decisions and the typing in separate models.
+That single-request shape is what the earlier version of this table was missing.
+On the same nine tasks this morning the agent solved five, and every failure
+looked the same — over twenty-five requests and the note `ran out of
+steps`. It was not getting hard tasks slowly wrong. It was finishing them and
+not noticing: the loop asked the model whether the work was done while the
+project's own test command had already answered. Three things changed that, and
+each is a fact replacing an opinion — a green suite ends the run, a suite with
+fewer failures counts as progress and is kept rather than undone, and the
+drafts race each other through the real test command instead of being judged
+one at a time.
+
+What is left in the time column is the writer, not the decisions. csvparse takes
+one request to Jev and fifty-one seconds, and nearly all of that is six drafts
+being typed. Point `JEVCODE_WRITER_MODEL` at a faster model and the same task
+comes out in fifteen seconds with nothing else changed — which is the argument
+for keeping the decisions and the typing in separate models.
 
 ### Where the seconds go
 
@@ -240,24 +249,25 @@ the run cost where the provider reports it. Those are three different units and
 they never share an axis.
 
 Run on 2026-09-20, nine tasks, one attempt each, opencode 1.18.31 as the other
-agent:
+agent. Both write with the same model, so what is compared is the harness:
 
 | agent | model | solved | median time | cost per task |
 | --- | --- | --- | --- | --- |
-| opencode | MiniMax M2.7 | **8/9 (89%)** | 24.2s | not reported |
-| jevcode | Jev + qwen3.5-9b | 5/9 (56%) | 44.5s | 0.96 RUB (~$0.011) |
+| jevcode | Jev + MiniMax M2.7 | **9/9 (100%)** | 23.1s | 0.10 RUB + ~$0.016 |
+| opencode | MiniMax M2.7 | 8/9 (89%) | 24.7s | not reported |
 | opencode | qwen3-coder-30b | 1/9 (11%) | 18.6s | not reported |
 
-Read the first row first: a frontier coding model driving an ordinary agent
-beats this one, and it is not close. That is the honest state of things and no
-amount of cheap decisions changes it today.
+Nine tasks is a small set, and a hundred per cent on it means "nothing here was
+out of reach", not "this agent does not fail". Read the third row twice: it is
+the same benchmark from the other end. qwen3-coder-30b is a capable coding
+model, and in a conventional agent it solves one task in nine — it writes
+TypeScript into a Python project, edits the test instead of the code, calls
+`npm test` where there is a Makefile. What the decisions buy is not
+intelligence, it is not getting lost.
 
-The interesting row is the third. qwen3-coder-30b is a bigger, more capable
-model than the 9b jevcode writes with, and in a conventional agent it solves one
-task in nine — it writes TypeScript into a Python project, edits the test
-instead of the code, calls `npm test` where there is a Makefile. The same class
-of model, with Jev choosing where to look and which draft to keep, solves five.
-What the decisions buy is not intelligence; it is not getting lost.
+Both agents were checked for the oldest way to pass a benchmark: every task
+ships a `.protected` list naming its test files and its Makefile, and a run
+that changed either of them does not count.
 
 Cost is blank for the opencode rows because neither provider reports a price to
 the agent — MiniMax bills a plan, and the gateway does not return usage. We are

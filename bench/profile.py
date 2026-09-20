@@ -1,10 +1,10 @@
 """Where the seconds of a step actually go.
 
-A step is three different kinds of waiting and they are easy to confuse:
-asking System One (many questions, one request, fast), writing drafts (one
-model call per draft, run in parallel, slow), and everything the agent does on
-your machine — reading files, running the project's tests, applying a patch.
-Only the third one is free, and it is usually not the one people blame.
+A step is four different kinds of waiting and they are easy to confuse: asking
+System One (many questions, one request, fast), writing drafts (one model call
+per draft, run in parallel, slow), running the project's own tests (once per
+candidate now, all at the same time), and everything else the agent does on
+your machine. Only the last two are free, and they are usually the ones blamed.
 
 The numbers here are wall clock, not sums: drafts are written in parallel, so
 adding up per-call durations would invent seconds that never passed.
@@ -36,14 +36,22 @@ class Clock:
     def __init__(self) -> None:
         self.spent: dict = {}
         self.calls: dict = {}
+        self.depth: dict = {}
 
     @contextlib.contextmanager
     def phase(self, name: str):
+        # A phase inside a phase of the same name is the same wall clock seen
+        # twice — the parallel test runs happen inside the race that started
+        # them — and counting both would invent seconds that never passed.
+        inside = self.depth.get(name, 0)
+        self.depth[name] = inside + 1
         started = time.time()
         try:
             yield
         finally:
-            self.spent[name] = self.spent.get(name, 0.0) + (time.time() - started)
+            self.depth[name] = inside
+            if not inside:
+                self.spent[name] = self.spent.get(name, 0.0) + (time.time() - started)
             self.calls[name] = self.calls.get(name, 0) + 1
 
 
@@ -63,6 +71,26 @@ def instrument(clock: Clock) -> None:
             return drafts(self, prompt, *a, **kw)
 
     SystemOne.ask, Writer.drafts = timed_ask, timed_drafts
+
+    # The project's own tests, counted apart from the rest of the machine: the
+    # agent now runs every candidate at once instead of one after another, and
+    # a phase that changed that much should be visible rather than hidden
+    # inside "everything else".
+    from jevcode import act, tryout
+
+    run_command, race = act.run, tryout.race
+
+    def timed_run(command, cwd, *a, **kw):
+        with clock.phase("tests"):
+            return run_command(command, cwd, *a, **kw)
+
+    def timed_race(*a, **kw):
+        with clock.phase("tests"):
+            return race(*a, **kw)
+
+    act.run, tryout.race = timed_run, timed_race
+    # engine imported `act` as a module, so patching the attribute is enough;
+    # tryout calls act.run through the module for the same reason.
 
 
 def run(directory: str, task: str, args) -> dict:
@@ -84,6 +112,7 @@ def run(directory: str, task: str, args) -> dict:
 
     one_s = clock.spent.get("system one", 0.0)
     writer_s = clock.spent.get("writer", 0.0)
+    tests_s = clock.spent.get("tests", 0.0)
     return {
         "task": task[:70],
         "outcome": outcome.reason,
@@ -93,7 +122,8 @@ def run(directory: str, task: str, args) -> dict:
                            "questions": usage.questions},
             "writer": {"seconds": round(writer_s, 2), "calls": clock.calls.get("writer", 0),
                        "drafts": writer_usage.calls},
-            "machine": {"seconds": round(total - one_s - writer_s, 2), "calls": 0},
+            "tests": {"seconds": round(tests_s, 2), "calls": clock.calls.get("tests", 0)},
+            "machine": {"seconds": round(total - one_s - writer_s - tests_s, 2), "calls": 0},
         },
         "cost": round(usage.cost + writer_usage.cost, 4),
         "currency": usage.currency or writer_usage.currency,
@@ -109,6 +139,8 @@ def report(result: dict) -> str:
             extra = "  %d requests, %d questions" % (phase["calls"], phase["questions"])
         elif name == "writer":
             extra = "  %d rounds, %d drafts" % (phase["calls"], phase["drafts"])
+        elif name == "tests":
+            extra = "  %d runs of the project's own command" % phase["calls"]
         lines.append("  %-11s %6.1fs  %3.0f%%%s" % (name, phase["seconds"], share, extra))
     lines.append("  cost        %6.2f %s" % (result["cost"], result["currency"]))
     return "\n".join(lines)
@@ -121,9 +153,12 @@ def main() -> int:
     ap.add_argument("sentence", nargs="?", default="", help="the task, when using --dir")
     ap.add_argument("--task", default="", help="a task from bench/tasks instead")
     ap.add_argument("--dir", default="", help="a repository of your own")
-    ap.add_argument("-n", "--candidates", type=int, default=6)
-    ap.add_argument("--max-steps", type=int, default=14)
-    ap.add_argument("--settle-at", type=int, default=4)
+    # The stand measures the product's own limits: a ceiling invented here
+    # would only ever make our own numbers look worse than the thing we ship.
+    from jevcode.config import DEFAULTS
+    ap.add_argument("-n", "--candidates", type=int, default=DEFAULTS["candidates"])
+    ap.add_argument("--max-steps", type=int, default=DEFAULTS["max_steps"])
+    ap.add_argument("--settle-at", type=int, default=DEFAULTS["settle_at"])
     ap.add_argument("--out", default="", help="also write the numbers here as json")
     args = ap.parse_args()
 

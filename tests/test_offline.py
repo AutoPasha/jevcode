@@ -60,6 +60,21 @@ class Tree(unittest.TestCase):
         self.assertIn("npm run test", cmds)
         self.assertIn("npm run build", cmds)
 
+    def test_a_tests_directory_full_of_javascript_is_not_a_python_project(self):
+        """Offering pytest here fails identically for every candidate, which
+        reads as "nothing I write changes anything"."""
+        os.makedirs(os.path.join(self.dir, "tests"), exist_ok=True)
+        with open(os.path.join(self.dir, "tests", "dedupe.test.js"), "w") as fh:
+            fh.write("test('x', () => {});\n")
+        with open(os.path.join(self.dir, "Makefile"), "w") as fh:
+            fh.write("test:\n\tnode --test\n")
+        cmds = Repo(self.dir).known_commands()
+        self.assertEqual(list(cmds), ["make test"])
+        with open(os.path.join(self.dir, "tests", "test_real.py"), "w") as fh:
+            fh.write("def test_x():\n    pass\n")
+        self.assertTrue(any("pytest" in c or "unittest" in c
+                            for c in Repo(self.dir).known_commands()))
+
 
 class Edits(unittest.TestCase):
     def test_replace_region_keeps_the_rest(self):

@@ -30,8 +30,44 @@ DEFAULT_MODEL = "gpt-4o-mini"
 FENCE = re.compile(r"```[a-zA-Z0-9_+-]*\n(.*?)```", re.S)
 
 
+def _extra_body() -> dict:
+    """Provider knobs the brief cannot express, passed through as JSON.
+
+    Every provider has a few of its own, and the one that matters here is the
+    thinking switch. A model that reasons before it answers spends the same
+    allowance the code has to come out of: asked for a whole class with room
+    for 8000 tokens, MiniMax-M2.7 spent all 8000 thinking and returned nothing
+    usable, four times out of four, in 110 seconds. Turning that off is one
+    field in the body, so it is a setting rather than a patch:
+
+        JEVCODE_WRITER_EXTRA='{"thinking": {"type": "disabled"}}'
+    """
+    raw = os.environ.get("JEVCODE_WRITER_EXTRA") or ""
+    if not raw.strip():
+        return {}
+    try:
+        loaded = json.loads(raw)
+    except ValueError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _price(name: str) -> float:
+    try:
+        return float(os.environ.get(name) or 0.0)
+    except ValueError:
+        return 0.0
+
+
 @dataclass
 class WriterUsage:
+    """What the writer spent.
+
+    Gateways tend to put the price of a call in the usage block, and when one
+    does we simply believe it. A provider's own API usually does not: it
+    reports tokens and expects you to know its price list. For that case the
+    rate per million tokens comes from the environment, so the number in a
+    benchmark table is one anybody can recompute from a published price."""
     calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -49,7 +85,12 @@ class WriterUsage:
             if u.get(name) is not None:
                 self.cost += float(u[name])
                 self.currency = self.currency or currency
-                break
+                return
+        rate_in, rate_out = _price("JEVCODE_WRITER_PRICE_IN"), _price("JEVCODE_WRITER_PRICE_OUT")
+        if rate_in or rate_out:
+            self.cost += (int(u.get("prompt_tokens") or 0) * rate_in
+                          + int(u.get("completion_tokens") or 0) * rate_out) / 1e6
+            self.currency = self.currency or (os.environ.get("JEVCODE_WRITER_CURRENCY") or "USD")
 
 
 @dataclass
@@ -60,30 +101,41 @@ class Draft:
     code: str
     seconds: float = 0.0
     error: str = ""
+    truncated: bool = False
 
 
 class Writer:
-    def __init__(self, url=None, key=None, model=None, timeout=180, temperature=0.7,
-                 usage: WriterUsage | None = None):
+    def __init__(self, url=None, key=None, model=None, timeout=0, temperature=0.7,
+                 usage: WriterUsage | None = None, extra: dict | None = None):
         self.url = url or os.environ.get("JEVCODE_WRITER_URL") or DEFAULT_URL
         self.key = (key or os.environ.get("JEVCODE_WRITER_KEY")
                     or os.environ.get("OPENAI_API_KEY"))
         self.model = model or os.environ.get("JEVCODE_WRITER_MODEL") or DEFAULT_MODEL
-        self.timeout = timeout
+        # How long one draft may take. A writer that thinks before it answers
+        # needs minutes, not the transport's default, and which writer is in
+        # use is a setting rather than a code change.
+        self.timeout = timeout or int(os.environ.get("JEVCODE_WRITER_TIMEOUT") or 300)
         self.temperature = temperature
         self.usage = usage if usage is not None else WriterUsage()
+        self.extra = extra if extra is not None else _extra_body()
 
     def _once(self, prompt: str, system: str, temperature: float, max_tokens: int) -> tuple:
         messages = ([{"role": "system", "content": system}] if system else [])
         messages.append({"role": "user", "content": prompt})
         payload = {"model": self.model, "messages": messages,
                    "temperature": temperature, "max_tokens": max_tokens}
+        payload.update(self.extra)
         out, spent = net.post_json(self.url, payload, {
             "Authorization": "Bearer " + (self.key or ""),
             "User-Agent": "jevcode",
         }, self.timeout)
         self.usage.add(out, spent)
-        return out["choices"][0]["message"]["content"], spent
+        choice = out["choices"][0]
+        # A reply cut off at the token limit looks exactly like a syntax error
+        # further down the line, and gets thrown away for the wrong reason. The
+        # provider already says which it was, so believe it.
+        stopped = (choice.get("finish_reason") or choice.get("stop_reason") or "")
+        return choice["message"]["content"], spent, stopped == "length"
 
     def drafts(self, prompt: str, n: int = 4, system: str = "", max_tokens: int = 1600,
                spread: float = 0.25, enough: int = 0, grace: float = 2.5) -> list:
@@ -101,12 +153,12 @@ class Writer:
         def one(i: int) -> Draft:
             temp = self.temperature + spread * (i / max(n - 1, 1))
             try:
-                text, spent = self._once(prompt, system, min(temp, 1.3), max_tokens)
+                text, spent, cut = self._once(prompt, system, min(temp, 1.3), max_tokens)
             except net.HTTPError as ex:
                 return Draft(i, "", "", 0.0, "HTTP %d: %s" % (ex.status, ex.body[:200]))
             except Exception as ex:                      # noqa: BLE001 - reported, not raised
                 return Draft(i, "", "", 0.0, str(ex)[:200])
-            return Draft(i, text, extract_code(text), round(spent, 2))
+            return Draft(i, text, extract_code(text), round(spent, 2), truncated=cut)
 
         pool = cf.ThreadPoolExecutor(max(n, 1))
         futures = [pool.submit(one, i) for i in range(n)]
@@ -120,12 +172,23 @@ class Writer:
         return sorted([d for d in out if d is not None], key=lambda d: d.index)
 
 
+THINK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
+THINK_OPEN = re.compile(r"<(think|thinking|reasoning)>.*$", re.S | re.I)
+
+
 def extract_code(text: str) -> str:
-    """Take the fenced block if there is one, otherwise trust the whole reply."""
-    blocks = FENCE.findall(text or "")
+    """Take the fenced block if there is one, otherwise trust the whole reply.
+
+    Thinking is cut out first. Models that reason in the open put it in the
+    same field as the answer, and a reply that is all thinking with a code
+    fence somewhere in the middle of it used to be read as code — including
+    the model talking itself out of the version it then wrote.
+    """
+    text = THINK.sub("", text or "")
+    blocks = FENCE.findall(text)
     if blocks:
         return max(blocks, key=len).strip("\n")
-    return (text or "").strip()
+    return THINK_OPEN.sub("", text).strip()
 
 
 def _settle(futures: list, enough: int, grace: float) -> list:

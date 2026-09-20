@@ -17,14 +17,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from . import act, gate, locate, patch, questions
-from .repo import Repo
+from . import act, gate, locate, patch, questions, tryout, verify
+from .repo import Region, Repo
 from .systemone import SystemOne, Usage
 from .trace import Trace
 from .writer import Writer, WriterUsage
 
 MAX_HISTORY = 14
 OPEN_WINDOW = 160
+STUCK_LIMIT = 4        # edit rounds in a row that moved nothing, then stop
+STUCK_WIDEN = 1        # ...and after this many, stop patching and write the file
 
 
 @dataclass
@@ -69,8 +71,47 @@ class Agent:
         self.last_failure: tuple = ()
         self.failed_regions: dict = {}
         self._shortlist: dict | None = None
+        self.stuck = 0                  # edit rounds in a row that changed nothing
+        self.verified = False           # the project's own check went red → green
+        self.create_vetoed = False      # "a new file is not needed" already said once
+        self._progress: verify.Result | None = None
+        self._preopen()
 
     # ---------------------------------------------------------------- state
+
+    SOURCE_SUFFIX = (".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".rs", ".rb",
+                     ".java", ".php", ".c", ".cc", ".cpp", ".cs", ".swift", ".kt")
+
+    def _preopen(self) -> None:
+        """One source file and nothing else to change: open it without asking.
+
+        A whole step — a request, a decision and a turn of the loop — used to go
+        on establishing that the only file in the repository is the file to
+        change. That is not judgement, it is counting, and counting belongs in
+        the code. Anything bigger than a single-file exercise still goes through
+        the usual choice.
+        """
+        try:
+            files = self.repo.files()
+        except OSError:
+            return
+        sources = [f for f in files
+                   if f.endswith(self.SOURCE_SUFFIX) and not self._looks_like_test(f)]
+        if len(sources) != 1:
+            return
+        path = sources[0]
+        self.open_path = path
+        total = len(self.repo.read(path).splitlines())
+        self.open_focus = (1, min(total or 1, OPEN_WINDOW))
+        self.opened[path] = self.open_focus
+        self.note("opened %s (%d lines) — the only source file here" % (path, total))
+
+    @staticmethod
+    def _looks_like_test(rel: str) -> bool:
+        name = os.path.basename(rel).lower()
+        parts = rel.lower().replace("\\", "/").split("/")
+        return ("test" in name or "spec" in name
+                or any(p in ("test", "tests", "spec", "specs", "__tests__") for p in parts))
 
     def shortlist(self) -> dict:
         if self._shortlist is None:
@@ -132,6 +173,13 @@ class Agent:
                        self.max_steps, self.edits, self.checks)
 
     def step(self, number: int) -> Outcome | None:
+        if self.stuck >= STUCK_LIMIT:
+            # Four full rounds of candidates, none of which moved a single test.
+            # The remaining steps will not either, and the whole cost of this
+            # agent is in the drafts they would burn.
+            self.trace.record("stop", why="no progress", rounds=self.stuck)
+            return Outcome(False, "%d rounds of edits in a row moved nothing"
+                                  % self.stuck)
         files = self.shortlist()
         regions = self._region_options()
         commands = self.repo.known_commands() if self.allow_commands else {}
@@ -252,21 +300,27 @@ class Agent:
             region = regions[0] if regions else None
         if region is None:
             return Outcome(False, "no region to edit in %s" % path)
-        region = self._widened(path, region)
+        region, whole = self._scoped(path, region)
 
         self.trace.detail("writing %s %s — %d candidates"
                           % (path, region.label, self.candidates))
-        result = patch.write(self.one, self.writer, self.repo, path,
+        result = patch.draft(self.one, self.writer, self.repo, path,
                              region.start, region.end, self.task, n=self.candidates,
                              related=self.related_code(path), failure=self.last_failure,
-                             settle_at=self.settle_at, settle_grace=self.settle_grace)
+                             settle_at=self.settle_at, settle_grace=self.settle_grace,
+                             whole=whole, label=region.name)
+        raced = self._race(path, region, result)
+        if raced is None and result.chosen is None:
+            patch.judge(self.one, self.repo, path, region.start, region.end,
+                        self.task, result)
         for c in result.candidates:
             self.trace.record("candidate", letter=c.letter, rejected=c.rejected,
                               p=c.probability, works=c.works, scope=c.scope,
                               seconds=c.seconds)
         if not result.chosen:
             self.trace.bad(result.reason)
-            self.note("tried to write %s but every candidate failed the checks" % path)
+            if raced is None:
+                self.note("tried to write %s but every candidate failed the checks" % path)
             return None
 
         dropped = [c for c in result.candidates if c.rejected]
@@ -293,18 +347,113 @@ class Agent:
             self.note("the person declined the change to %s" % path)
             return None
 
-        applied = self._apply_best(path, region, result)
+        applied = self._apply_best(path, region, result, raced)
+        if self.verified:
+            # The project's own command was red before this edit and is green
+            # after it. That is the answer to "is it done", and it is a fact —
+            # no point spending a request asking for an opinion about it.
+            self.trace.record("stop", why="the project's own check passed")
+            return Outcome(True, "task carried out and checked")
         if applied is None:
             self.note("edited %s but nothing passed the check" % path)
         return None
 
-    def _apply_best(self, path, region, result):
+    def _race(self, path: str, region, result) -> dict | None:
+        """Try every candidate against the project's own tests, all at once.
+
+        This is the step that used to be a chain: ask Jev which draft looks
+        best, apply it, run the suite, undo, apply the next one, run the suite
+        again. Six candidates meant up to six runs one after another plus a
+        request spent ordering them, and the order could simply be wrong.
+
+        Running them side by side in throwaway copies costs one run's worth of
+        waiting and answers with a fact. The request is only spent when the
+        tests genuinely cannot separate two drafts, which is rare.
+        """
+        command = self._check_command()
+        if not command or self.dry_run or len(result.alive) < 2:
+            return None
+        if not tryout.affordable(self.repo.root):
+            self.trace.detail("too big a tree to try the candidates side by side")
+            return None
+        before = self.baseline(command)
+        trials = tryout.race(self.repo, command, path, region.start, region.end,
+                             result.alive)
+        if not trials:
+            return None
+        self.trace.detail("tried %d candidates against `%s` at once: %s"
+                          % (len(trials), command,
+                             ", ".join("%s %s" % (t.letter, verify.describe(t.result))
+                                       for t in sorted(trials.values(),
+                                                       key=lambda t: t.letter))))
+        order = []
+        if tryout.undecided(trials, before):
+            # Every draft that moved anything moved it by exactly the same
+            # amount. That is the one case the tests cannot settle, so it is
+            # the one case worth a request.
+            patch.judge(self.one, self.repo, path, region.start, region.end,
+                        self.task, result)
+            order = [c.letter for c in sorted(result.alive, key=lambda c: -c.probability)]
+        winner = tryout.pick(trials, before, order)
+        for trial in trials.values():
+            self.trace.record("trial", letter=trial.letter, passed=trial.run.ok,
+                              passed_tests=trial.result.passed,
+                              failed_tests=trial.result.failed,
+                              seconds=trial.run.seconds, chosen=trial.letter == winner)
+        if not winner:
+            worst = sorted(trials.values(), key=lambda t: t.letter)[0]
+            self.last_failure = (command, worst.run.output)
+            self.checks.append({"command": command, "ok": False,
+                                "output": worst.run.output[-600:]})
+            self.failed_regions[(path, region.label)] = \
+                self.failed_regions.get((path, region.label), 0) + 1
+            self.stuck += 1
+            result.chosen = None
+            result.reason = ("none of %d candidates moved `%s` forward"
+                             % (len(trials), command))
+            self.note("wrote %d candidates for %s %s; none of them moved `%s`"
+                      % (len(trials), path, region.label, command))
+            return trials
+        result.chosen = next(c for c in result.alive if c.letter == winner)
+        result.reason = "the tests picked %s out of %d" % (winner, len(trials))
+        return trials
+
+    def baseline(self, command: str) -> verify.Result:
+        """Where the project's own check stood before the agent touched anything.
+
+        Without it a red suite is just red, and every partial change looks
+        identical to every wrong one. With it, `4 failed, 1 passed` after
+        `5 failed, 0 passed` is visibly progress and gets to survive.
+        """
+        if self._progress is None:
+            if not command:
+                self._progress = verify.Result()
+            else:
+                run = act.run(command, self.repo.root)
+                self._progress = verify.parse(run.output, run.code)
+                self.trace.detail("before the change: %s" % verify.describe(self._progress))
+        return self._progress
+
+    def _apply_best(self, path, region, result, trials: dict | None = None):
         """Apply the winner; if the project's own check rejects it, try the runner-up.
 
         The other candidates are already written and already judged, so falling
         back costs one test run and no model calls at all.
+
+        A candidate is only thrown away when it fails to move anything. Half of
+        a change that needs two places will leave the suite red and still be
+        worth keeping — that is what `verify.better` is for, and keeping it is
+        the difference between finishing a task in three steps and rewriting the
+        same region until the budget runs out.
         """
         command = self._check_command()
+        before = self.baseline(command)
+        if trials and result.chosen and result.chosen.letter in trials:
+            # The race already ran this exact code against this exact command.
+            # Running it again would cost another suite and tell us the same
+            # thing, so the trial is the check.
+            return self._keep(path, region, result.chosen, command, before,
+                              trials[result.chosen.letter].run)
         tried: set = set()
         candidate = result.chosen
         while candidate is not None:
@@ -317,9 +466,10 @@ class Agent:
                                   letter=candidate.letter, checked=False)
                 return edit
             run = act.run(command, self.repo.root)
+            after = verify.parse(run.output, run.code)
             self.checks.append({"command": command, "ok": run.ok,
                                 "output": run.output[-600:]})
-            if not run.ok and self._environment_fault(run):
+            if not run.ok and self._environment_fault(run, after):
                 # The runner itself is broken here — a missing tool, not a bad
                 # patch. Keep the change and stop trusting this command.
                 self.broken_commands.add(command)
@@ -334,10 +484,37 @@ class Agent:
             if run.ok:
                 self.edits.append(edit)
                 self.last_failure = ()
+                self._progress = after
+                self.stuck = 0
+                # Green now, red before: the project itself says the task is
+                # done. Green before as well means this suite never measured
+                # the task, so it proves nothing and the loop carries on.
+                self.verified = not before.ok
                 self.trace.good("%s passed with candidate %s" % (command, candidate.letter))
                 self.trace.record("edit", path=path, region=region.label,
-                                  letter=candidate.letter, checked=True, passed=True)
+                                  letter=candidate.letter, checked=True, passed=True,
+                                  verified=self.verified)
                 self.note("edited %s %s; `%s` passed" % (path, region.label, command))
+                return edit
+            if verify.better(after, before):
+                # Still red, but fewer things are wrong than before. This is
+                # half of a change that needs two places, and throwing it away
+                # would put the next attempt back where this one started.
+                self.edits.append(edit)
+                self._progress = after
+                self.stuck = 0
+                self.last_failure = (command, run.output)
+                self.trace.good("kept candidate %s: %s (was %s)"
+                                % (candidate.letter, verify.describe(after),
+                                   verify.describe(before)))
+                self.trace.record("edit", path=path, region=region.label,
+                                  letter=candidate.letter, checked=True, passed=False,
+                                  progress=True, passed_tests=after.passed,
+                                  failed_tests=after.failed,
+                                  was_passing=before.passed, output=run.output[-300:])
+                self.note("edited %s %s; `%s` still fails but %s (was %s)"
+                          % (path, region.label, command,
+                             verify.describe(after), verify.describe(before)))
                 return edit
             self.trace.bad("%s failed with candidate %s" % (command, candidate.letter))
             self.trace.record("edit", path=path, region=region.label,
@@ -350,8 +527,90 @@ class Agent:
                 self.trace.detail("falling back to candidate %s" % candidate.letter)
         self.failed_regions[(path, region.label)] = \
             self.failed_regions.get((path, region.label), 0) + 1
+        self.stuck += 1
         self.note("no candidate passed `%s` in %s" % (command, path))
         return None
+
+    def _keep(self, path, region, candidate, command: str, before, run):
+        """Apply a candidate whose test run has already happened, in a copy.
+
+        Everything the serial path learns from running the suite is already in
+        `run`: the exit code, the counts, whether the runner itself is broken.
+        So this writes the file and records what is known, instead of spending
+        another suite proving it twice.
+        """
+        after = verify.parse(run.output, run.code)
+        edit = act.apply_edit(self.repo, path, region.start, region.end, candidate.code)
+        self.checks.append({"command": command, "ok": run.ok,
+                            "output": run.output[-600:]})
+        self.edits.append(edit)
+        if not run.ok and self._environment_fault(run, after):
+            self.broken_commands.add(command)
+            self.trace.bad("`%s` cannot run here; keeping the change unchecked" % command)
+            self.trace.record("edit", path=path, region=region.label,
+                              letter=candidate.letter, checked=False,
+                              environment_fault=True)
+            self.note("edited %s %s; `%s` could not run (environment)"
+                      % (path, region.label, command))
+            return edit
+        self._progress = after
+        self.stuck = 0
+        if run.ok:
+            self.last_failure = ()
+            self.verified = not before.ok
+            self.trace.good("%s passed with candidate %s" % (command, candidate.letter))
+            self.trace.record("edit", path=path, region=region.label,
+                              letter=candidate.letter, checked=True, passed=True,
+                              verified=self.verified)
+            self.note("edited %s %s; `%s` passed" % (path, region.label, command))
+            return edit
+        self.last_failure = (command, run.output)
+        self.trace.good("kept candidate %s: %s (was %s)"
+                        % (candidate.letter, verify.describe(after), verify.describe(before)))
+        self.trace.record("edit", path=path, region=region.label,
+                          letter=candidate.letter, checked=True, passed=False,
+                          progress=True, passed_tests=after.passed,
+                          failed_tests=after.failed, was_passing=before.passed,
+                          output=run.output[-300:])
+        self.note("edited %s %s; `%s` still fails but %s (was %s)"
+                  % (path, region.label, command, verify.describe(after),
+                     verify.describe(before)))
+        return edit
+
+    def _scoped(self, path: str, region) -> tuple:
+        """How much of the file this edit gets to rewrite.
+
+        A file whose functions are all signatures over `pass` is not something
+        to patch region by region: no single region can make the tests pass, so
+        every correct half gets rejected by the suite in turn. That shape is
+        visible in the code before anything is written, so the agent writes the
+        whole file at once instead of discovering it the expensive way.
+        """
+        total = max(len(self.repo.read(path).splitlines()), 1)
+        whole = Region("the whole file", 1, total, "file")
+        if self.repo.greenfield(path):
+            stubs = self.repo.stubs(path)
+            self.trace.detail("%s is a skeleton (%d unwritten %s) — writing it whole"
+                              % (path, len(stubs),
+                                 "body" if len(stubs) == 1 else "bodies"))
+            self.trace.record("scope", path=path, whole=True, stubs=len(stubs))
+            return whole, True
+        if self.stuck > STUCK_WIDEN:
+            self.trace.detail("%d rounds moved nothing — writing %s whole"
+                              % (self.stuck, path))
+            self.trace.record("scope", path=path, whole=True, stuck=self.stuck)
+            return whole, True
+        wider = self._widened(path, region)
+        if any(s.start == wider.start and s.end == wider.end
+               for s in self.repo.stubs(path)):
+            # The region itself is a blank — an empty class in a file that is
+            # otherwise written. Patching it would be sending a writer to edit
+            # `pass`; what it needs is the brief and the room to author the
+            # thing outright, scoped to that class and nothing else.
+            self.trace.detail("%s is a blank — writing it out in full" % wider.label)
+            self.trace.record("scope", path=path, whole=True, stub=wider.label)
+            return wider, True
+        return wider, False
 
     def _widened(self, path: str, region):
         """A region that keeps failing is probably the wrong size.
@@ -385,13 +644,23 @@ class Agent:
                 return name
         return ""
 
-    def _environment_fault(self, run) -> bool:
+    def _environment_fault(self, run, result=None) -> bool:
         """Did the command fail because of the machine rather than the change?
 
         Asked in words instead of grepping for `ModuleNotFoundError`: the ways a
         toolchain can be missing are endless, and this is one Score question
         against output the agent already has in hand.
+
+        Asked only when there is something to ask about. A runner that reported
+        `3 failed, 2 passed` plainly ran, so the machine is fine and the
+        question has one possible answer — and it used to be asked once per
+        rejected candidate, which is six requests a step for nothing.
         """
+        if result is not None:
+            if result.readable:
+                return False
+            if result.missing:
+                return True
         answers = self.one.ask({"output": run.output[-4000:], "task": self.task},
                                questions.read_result(run.output, self.task))
         self.trace.record("verdict", command=run.command, level=answers.value("verdict"),
@@ -408,7 +677,15 @@ class Agent:
                           "repository": {"name": os.path.basename(self.repo.root),
                                          "files": self.repo.files()[:150]}},
                          questions.pick_new_file(options, self.task))
-        if a.p("needed") < questions.NEW_FILE:
+        # Two questions about one decision, and they can disagree forever: the
+        # step already chose `create` at p=0.87 while this one answers 0.49 and
+        # sends the agent back to reading, twenty-four times in a row on
+        # slugify. So the veto only stands while the step itself is unsure, and
+        # it never stands twice — after that the choice made out there wins and
+        # this question is left with the job it is actually good at, the path.
+        chosen = answers.probs("action").get("create", 0.0) if "action" in answers else 0.0
+        if a.p("needed") < questions.NEW_FILE and chosen < 0.6 and not self.create_vetoed:
+            self.create_vetoed = True
             self.trace.detail("a new file is not what the task needs (%.2f)" % a.p("needed"))
             self.note("considered creating a file; the task does not call for one")
             return self._read(answers)
@@ -467,12 +744,28 @@ class Agent:
             return None
         run = act.run(command, self.repo.root)
         self.checks.append({"command": command, "ok": run.ok, "output": run.output[-600:]})
-        verdicts = self.one.ask({"output": run.output[-4000:], "task": self.task},
-                                questions.read_result(run.output, self.task))
-        meaning = verdicts.value("verdict")
-        self.trace.detail("`%s` → exit %d, verdict %.1f/3" % (command, run.code, meaning))
-        self.trace.record("run", command=command, code=run.code, verdict=meaning,
-                          our_fault=verdicts.p("our_fault"), output=run.output[-400:])
+        result = verify.parse(run.output, run.code)
+        if command == self._check_command():
+            was = self.baseline(command)
+            self._progress = result
+            if run.ok and self.edits and was.readable and not was.ok:
+                self.verified = True
+        if result.readable:
+            # The runner counted the tests itself. Asking a model what its own
+            # output means would be a request spent re-reading a number.
+            meaning = 3.0 if run.ok else 1.0
+            self.trace.detail("`%s` → exit %d, %s"
+                              % (command, run.code, verify.describe(result)))
+            self.trace.record("run", command=command, code=run.code, verdict=meaning,
+                              passed_tests=result.passed, failed_tests=result.failed,
+                              output=run.output[-400:])
+        else:
+            verdicts = self.one.ask({"output": run.output[-4000:], "task": self.task},
+                                    questions.read_result(run.output, self.task))
+            meaning = verdicts.value("verdict")
+            self.trace.detail("`%s` → exit %d, verdict %.1f/3" % (command, run.code, meaning))
+            self.trace.record("run", command=command, code=run.code, verdict=meaning,
+                              our_fault=verdicts.p("our_fault"), output=run.output[-400:])
         self.note("ran `%s`: exit %d, %s" % (
             command, run.code, "passed" if run.ok else run.output.strip().splitlines()[-1:][0]
             if run.output.strip() else "failed"))

@@ -102,15 +102,26 @@ class _Host:
         conn.connect()
         return conn
 
-    def take(self):
+    def take(self, timeout: int = TIMEOUT):
+        """A connection from the pool, set to wait as long as this call needs.
+
+        The deadline belongs to the request, not to the socket that happens to
+        carry it: a model that thinks before it answers can be a hundred
+        seconds, and a pooled connection created for an earlier, quicker call
+        would cut it off at whatever it was made with. That looked exactly like
+        a model failing to answer, and the draft was thrown away for it.
+        """
         while True:
             try:
                 conn, parked = self.free.get_nowait()
             except queue.Empty:
-                return self._new(), True
+                conn = self._new()
+                _deadline(conn, timeout)
+                return conn, True
             if time.time() - parked > IDLE_SECONDS:
                 _shut(conn)
                 continue
+            _deadline(conn, timeout)
             return conn, False
 
     def give(self, conn) -> None:
@@ -118,6 +129,16 @@ class _Host:
             _shut(conn)
             return
         self.free.put((conn, time.time()))
+
+
+def _deadline(conn, timeout: int) -> None:
+    conn.timeout = timeout
+    sock = getattr(conn, "sock", None)
+    if sock is not None:
+        try:
+            sock.settimeout(timeout)
+        except OSError:
+            pass
 
 
 def _shut(conn) -> None:
@@ -166,7 +187,7 @@ def post_json(url: str, payload: dict, headers: dict, timeout: int = TIMEOUT) ->
 
     started = time.time()
     for attempt in (0, 1):
-        conn, fresh = host.take()
+        conn, fresh = host.take(timeout)
         try:
             conn.request("POST", path, body=body, headers=sent)
             response = conn.getresponse()

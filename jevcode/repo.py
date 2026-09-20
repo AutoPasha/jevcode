@@ -130,6 +130,48 @@ class Repo:
         found.sort(key=lambda r: r.start)
         return found
 
+    # ------------------------------------------------------------ unwritten
+
+    def stubs(self, rel: str) -> list:
+        """Regions of a file that are declared but not written yet.
+
+        A signature with `pass` under it is not code to be edited, it is a
+        blank to be filled, and the difference decides how the change is
+        scoped. A file with two blanks cannot be made to pass its tests one
+        blank at a time, so the agent needs to know this before it writes
+        rather than after the suite has rejected two correct half-changes.
+        """
+        lines = self.read(rel).splitlines()
+        code = [r for r in self.regions(rel) if r.kind in ("function", "class")]
+        out = []
+        for region in code:
+            if _is_stub(lines[region.start - 1:region.end]):
+                out.append(region)
+            elif region.kind == "class" and _hollow(region, code, lines):
+                # A class is not written just because it has methods: if every
+                # one of them is a blank, the class itself is a blank. Counting
+                # it as written is how `class Robot: def __init__: pass` — the
+                # commonest shape of a task that says "write this class" — used
+                # to be patched method by method instead of authored.
+                out.append(region)
+        return out
+
+    def greenfield(self, rel: str) -> bool:
+        """Is this file mostly blanks — something to write rather than to edit?
+
+        Counted over the innermost regions only — the methods and functions
+        that actually hold code. A hollow class and each of its empty methods
+        are the same blank seen at two depths, and counting both would let one
+        empty class outvote everything written around it.
+        """
+        code = [r for r in self.regions(rel) if r.kind in ("function", "class")]
+        if not code:
+            return not self.read(rel).strip()
+        leaves = [r for r in code if not any(o is not r and r.start <= o.start
+                                             and o.end <= r.end for o in code)]
+        blanks = [r for r in self.stubs(rel) if r in leaves]
+        return len(blanks) >= 2 or len(blanks) == len(leaves)
+
     # ------------------------------------------------------------- commands
 
     def known_commands(self) -> dict:
@@ -139,10 +181,10 @@ class Repo:
         join = lambda *p: os.path.join(self.root, *p)          # noqa: E731
         python_project = (os.path.exists(join("pyproject.toml"))
                           or os.path.exists(join("setup.py"))
-                          or os.path.isdir(join("tests"))
-                          or os.path.exists(join("pytest.ini")))
-        if python_project and _has_pytest():
-            cmds["pytest -q"] = "run the Python test suite"
+                          or os.path.exists(join("pytest.ini"))
+                          or _python_tests(join("tests")))
+        if python_project and _pytest_command():
+            cmds[_pytest_command()] = "run the Python test suite"
         elif python_project and os.path.isdir(join("tests")):
             cmds["python3 -m unittest discover -s tests -q"] = "run the Python test suite"
         if os.path.exists(join("Makefile")):
@@ -161,16 +203,37 @@ class Repo:
 
 # --------------------------------------------------------------- internals
 
-def _has_pytest() -> bool:
-    """Only offer a command the machine can actually run.
+def _python_tests(directory: str) -> bool:
+    """A `tests/` directory is not by itself a Python project.
+
+    The JavaScript task in our own benchmark keeps its tests there too, and
+    calling that project Python put `python3 -m pytest -q` at the head of the
+    command list. Pytest then ran, collected nothing, and failed identically
+    for every candidate — so a correct change looked exactly like a wrong one
+    and the agent gave up on a task it used to pass.
+    """
+    try:
+        return any(f.endswith(".py") for f in os.listdir(directory))
+    except OSError:
+        return False
+
+
+def _pytest_command() -> str:
+    """Only offer a command the machine can actually run, in the form that runs.
 
     A missing test runner fails exactly like a broken patch, and an agent that
     cannot tell the two apart will happily throw away a correct change. Cheaper
-    to check once here than to reason about it later.
+    to check once here than to reason about it later — and `pytest` being
+    importable does not mean there is a `pytest` on PATH, which is the usual
+    shape of an installation that is not on the system path.
     """
     import importlib.util
     import shutil
-    return bool(shutil.which("pytest") or importlib.util.find_spec("pytest"))
+    if shutil.which("pytest"):
+        return "pytest -q"
+    if importlib.util.find_spec("pytest"):
+        return "python3 -m pytest -q"
+    return ""
 
 
 DEF_RE = re.compile(r"^(\s*)(?:async\s+)?(def|class)\s+([A-Za-z_][\w]*)")
@@ -234,6 +297,57 @@ def _window_regions(total: int, size: int) -> list:
         end = min(start + size - 1, total)
         out.append(Region("lines %d-%d" % (start, end), start, end, "block"))
     return out
+
+
+STUB_BODY = re.compile(
+    r"^(pass|\.\.\.|return|return None|return NotImplemented"
+    r"|raise NotImplementedError.*|todo!\(\)|unimplemented!\(\)"
+    r"|throw new Error\(.*\)|panic\(.*\))$", re.I)
+
+DOC_MARKS = ('"""', "'''")
+
+
+def _hollow(region, regions: list, lines: list) -> bool:
+    """A class whose every method is a blank, and which holds nothing else.
+
+    The methods are cut out of the body and what is left — the declaration, a
+    docstring, maybe a constant — is put through the same test as any other
+    stub. If nothing is left but signatures over `pass`, there is no code here
+    to patch, only a class to write.
+    """
+    inside = [r for r in regions
+              if r is not region and region.start <= r.start and r.end <= region.end]
+    if not inside:
+        return False
+    if not all(_is_stub(lines[r.start - 1:r.end]) for r in inside):
+        return False
+    covered = {n for r in inside for n in range(r.start, r.end + 1)}
+    rest = [lines[n - 1] for n in range(region.start, region.end + 1) if n not in covered]
+    return _is_stub(rest)
+
+
+def _is_stub(lines: list) -> bool:
+    """Everything under the signature is a placeholder, a comment or a docstring."""
+    if not lines:
+        return True
+    body, open_mark = [], ""
+    for raw in lines[1:]:
+        line = raw.strip()
+        if not line:
+            continue
+        if open_mark:
+            if open_mark in line:
+                open_mark = ""
+            continue
+        mark = next((m for m in DOC_MARKS if line.startswith(m)), "")
+        if mark:
+            if not (line.endswith(mark) and len(line) > len(mark) * 2 - 1):
+                open_mark = mark
+            continue
+        if line.startswith(("#", "//", "/*", "*")):
+            continue
+        body.append(line.rstrip(";").rstrip("{}").strip())
+    return all(STUB_BODY.match(line) for line in body if line)
 
 
 def _make_targets(path: str) -> list:

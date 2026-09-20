@@ -338,7 +338,7 @@
       </div>
     </div>
 
-    <div class="strip"><div><b>89%</b><span>of tasks solved, tests deciding</span></div><div><b>24s</b><span>median, start to green tests</span></div><div><b>0</b><span>decisions per task, on average</span></div><div><b>9</b><span>tasks, each judged by its own tests</span></div></div>
+    <div class="strip"><div><b>100%</b><span>of tasks solved, tests deciding</span></div><div><b>23s</b><span>median, start to green tests</span></div><div><b>30</b><span>decisions per task, on average</span></div><div><b>9</b><span>tasks, each judged by its own tests</span></div></div>
   </div>
 </div>
 
@@ -433,12 +433,12 @@
 <section id="measured" class="reveal">
   <p class="kicker">Measured, not claimed</p>
   <h2>Numbers on this page are generated from the results file.</h2>
-  <p class="sub">Nine tasks, one attempt each, run 2026-09-20. jevcode: Jev for the decisions, qwen3.5-9b for the drafts. opencode 1.18.31 as the other agent, on MiniMax M2.7 and on qwen3-coder-30b — the same tasks, the same copies, judged by the project&#x27;s own tests.</p>
+  <p class="sub">Nine tasks, one attempt each, run 2026-09-20 on commit 3200a69. Both agents write with MiniMax-M2.7; jevcode makes its decisions with Jev. Test files and Makefiles are checksummed, so a suite made green by rewriting its own tests does not count.</p>
 
   <div class="figs"><figure><img src="assets/solved.svg" alt="Solved, by task" loading="lazy"></figure><figure><img src="assets/speed.svg" alt="Seconds per task" loading="lazy"></figure><figure><img src="assets/cost.svg" alt="Cost per task" loading="lazy"></figure></div>
 
-  <div class="tbl scroll"><table><thead><tr><th>task</th><th>solved</th><th>decisions</th><th>requests</th><th>wall</th></tr></thead><tbody><tr><td class="mono">cart</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">39.6s</td></tr><tr><td class="mono">csvparse</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">25.1s</td></tr><tr><td class="mono">duration</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">22.8s</td></tr><tr><td class="mono">jsdedupe</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">24.1s</td></tr><tr><td class="mono">jsonflag</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">29.9s</td></tr><tr><td class="mono">pagesize</td><td class="no">no</td><td class="n">0</td><td class="n">0</td><td class="n">21.4s</td></tr><tr><td class="mono">retry</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">31.0s</td></tr><tr><td class="mono">slugify</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">24.2s</td></tr><tr><td class="mono">ttlcache</td><td class="yes">yes</td><td class="n">0</td><td class="n">0</td><td class="n">20.4s</td></tr></tbody></table></div>
-  <div class="tbl scroll"><table><thead><tr><th>agent</th><th>solved</th><th>median time</th><th>cost per task</th></tr></thead><tbody><tr><td>opencode-minimax</td><td class="n">8/9 (89%)</td><td class="n">24.2s</td><td class="n">—</td></tr><tr><td>jevcode</td><td class="n">5/9 (56%)</td><td class="n">44.5s</td><td class="n">0.96 RUB</td></tr><tr><td>opencode-qwen30b</td><td class="n">1/9 (11%)</td><td class="n">18.6s</td><td class="n">—</td></tr></tbody></table></div>
+  <div class="tbl scroll"><table><thead><tr><th>task</th><th>solved</th><th>decisions</th><th>requests</th><th>wall</th></tr></thead><tbody><tr><td class="mono">cart</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">23.1s</td></tr><tr><td class="mono">csvparse</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">51.0s</td></tr><tr><td class="mono">duration</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">22.5s</td></tr><tr><td class="mono">jsdedupe</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">14.3s</td></tr><tr><td class="mono">jsonflag</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">22.6s</td></tr><tr><td class="mono">pagesize</td><td class="yes">yes</td><td class="n">82</td><td class="n">6</td><td class="n">83.1s</td></tr><tr><td class="mono">retry</td><td class="yes">yes</td><td class="n">30</td><td class="n">2</td><td class="n">65.5s</td></tr><tr><td class="mono">slugify</td><td class="yes">yes</td><td class="n">81</td><td class="n">7</td><td class="n">57.2s</td></tr><tr><td class="mono">ttlcache</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">12.4s</td></tr></tbody></table></div>
+  <div class="tbl scroll"><table><thead><tr><th>agent</th><th>solved</th><th>median time</th><th>cost per task</th></tr></thead><tbody><tr><td>jevcode</td><td class="n">9/9 (100%)</td><td class="n">23.1s</td><td class="n">0.10 RUB</td></tr><tr><td>opencode-minimax</td><td class="n">8/9 (89%)</td><td class="n">24.7s</td><td class="n">—</td></tr></tbody></table></div>
 
   <div class="two">
     <div class="card">
@@ -578,7 +578,7 @@ jevcode stats --days 7       <span class="c"># what it has cost you</span></pre>
 
 <footer>
   <div class="wrap">
-    <span>Measurements from 2026-09-20 11:31.</span>
+    <span>Measurements from 2026-09-20 14:49.</span>
     <span>Built from <code>bench/results.json</code> by <code>bench/site.py</code>.</span>
     <span class="spacer"><a href="https://github.com/AutoPasha/jevcode">GitHub</a></span>
     <span><a href="https://github.com/AutoPasha/jevcode/tree/main/bench">The benchmark</a></span>
