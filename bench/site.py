@@ -75,7 +75,7 @@ PAGE = Template("""<!doctype html>
   code, pre, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
                      Consolas, "Liberation Mono", monospace; }
   a { color: inherit; }
-  .wrap { width: min(1080px, 100% - 40px); margin: 0 auto; }
+  .wrap { width: min(1120px, 100% - 40px); margin: 0 auto; }
 
   /* ── top bar ─────────────────────────────────────────────────────── */
   .top {
@@ -121,7 +121,7 @@ PAGE = Template("""<!doctype html>
                gap: 44px; align-items: center; }
   @media (max-width: 940px) {
     .slab { padding: 38px 24px 32px; border-radius: 18px; }
-    .hero-grid { grid-template-columns: 1fr; gap: 30px; }
+    .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 30px; }
   }
   .eyebrow {
     display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px;
@@ -144,9 +144,11 @@ PAGE = Template("""<!doctype html>
   .copy {
     display: inline-flex; align-items: center; gap: 12px; cursor: pointer;
     border: 1px solid rgba(255,255,255,.16); background: rgba(0,0,0,.35);
-    color: #f6f5f2; border-radius: 11px; padding: 11px 14px; font-size: 13.5px;
+    color: #f6f5f2; border-radius: 11px; padding: 11px 14px; font-size: 12.4px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    max-width: 100%; min-width: 0; overflow-x: auto; text-align: left;
   }
+  .copy .cmd { white-space: nowrap; }
   .copy:hover { border-color: rgba(255,255,255,.34); }
   .copy .tag { color: #8f8d85; }
   .copy .done { color: #7ddcae; }
@@ -177,8 +179,8 @@ PAGE = Template("""<!doctype html>
   .term .bar span { margin-left: 8px; font-size: 12px; color: #86847c;
                     font-family: ui-monospace, Menlo, Consolas, monospace; }
   .term pre {
-    margin: 0; padding: 18px 18px 20px; overflow-x: auto; color: #d7d5cc;
-    font-size: 12.7px; line-height: 1.72; tab-size: 2;
+    margin: 0; padding: 18px 16px 20px; color: #d7d5cc; overflow-x: auto;
+    font-size: 11.9px; line-height: 1.72; tab-size: 2;
   }
   .term .p  { color: #6f6d66; }
   .term .a  { color: #7fb6f2; }
@@ -189,7 +191,7 @@ PAGE = Template("""<!doctype html>
 
   /* ── stat strip ──────────────────────────────────────────────────── */
   .strip {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
     gap: 1px; background: var(--line); border: 1px solid var(--line);
     border-radius: 16px; overflow: hidden; margin-top: 26px;
   }
@@ -208,8 +210,10 @@ PAGE = Template("""<!doctype html>
   .sub { color: var(--muted); margin: 14px 0 0; max-width: 62ch; }
   p { margin: 14px 0; }
   section > p:first-of-type { max-width: 68ch; }
-  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
          gap: 22px; margin-top: 26px; align-items: start; }
+  .two > * { min-width: 0; }
+  .two.pair { grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); }
 
   .card {
     background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
@@ -246,10 +250,11 @@ PAGE = Template("""<!doctype html>
   figure { margin: 0; }
   figure img { display: block; width: 100%; border: 1px solid var(--line);
                border-radius: 14px; background: var(--panel); }
-  .figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  .figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
           gap: 18px; margin-top: 26px; }
-  .shot { margin-top: 26px; border: 1px solid var(--line); border-radius: 16px;
-          overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
+  .shot { margin: 26px auto 0; max-width: 880px; border: 1px solid var(--line);
+          border-radius: 16px; overflow: hidden; background: var(--panel);
+          box-shadow: var(--shadow); }
   .shot img { display: block; width: 100%; }
   .caption { color: var(--faint); font-size: 13px; margin-top: 10px; }
   .caption a { color: var(--accent); }
@@ -269,7 +274,7 @@ PAGE = Template("""<!doctype html>
           color: var(--muted); margin-top: 22px; }
 
   .steps { counter-reset: s; display: grid; gap: 14px; margin-top: 26px; }
-  .steps > div { position: relative; padding-left: 46px; }
+  .steps > div { position: relative; padding-left: 46px; min-width: 0; }
   .steps > div::before {
     counter-increment: s; content: counter(s);
     position: absolute; left: 0; top: 2px; width: 28px; height: 28px;
@@ -344,7 +349,8 @@ PAGE = Template("""<!doctype html>
 
         <div class="term">
           <div class="bar"><i></i><i></i><i></i><span>~/cart</span></div>
-<pre><span class="c">$</span> <span class="u">jevcode "make Cart.total accept a discount argument, taken off before tax"</span>
+<pre><span class="c">$</span> <span class="u">jevcode "make Cart.total accept a discount argument,</span>
+<span class="u">          taken off before tax"</span>
 
 <span class="a">step 1 search</span>  <span class="q">p=0.50</span> <span class="p">conf=0.54</span>
         <span class="p">searched 'Cart' → 2 files</span>
@@ -425,7 +431,7 @@ PAGE = Template("""<!doctype html>
   <span class="s">"worth_read"</span>, <span class="s">"worth_edit"</span>: noul(<span class="c">"would this produce anything new?"</span>),
 <span class="k">}</span></pre>
 
-  <div class="two">
+  <div class="two pair">
     <div class="card">
       <h3>Candidates, not a candidate</h3>
       <p>An edit asks the writer for six drafts at once. Drafts that do not
@@ -608,7 +614,7 @@ jevcode stats --days 7       <span class="c"># what it has cost you</span></pre>
     <span>Built from <code>bench/results.json</code> by <code>bench/site.py</code>.</span>
     <span class="spacer"><a href="${repo}">GitHub</a></span>
     <span><a href="${repo}/tree/main/bench">The benchmark</a></span>
-    <span><a href="README.ru.md">По-русски</a></span>
+    <span><a href="${repo}/blob/main/docs/README.ru.md">По-русски</a></span>
     <span><a href="${repo}/blob/main/LICENSE">MIT</a></span>
   </div>
 </footer>
@@ -666,14 +672,13 @@ def build(payload: dict, out_dir: str) -> str:
             ("%d%%" % entry["rate"], "of tasks solved, tests deciding"),
             ("%.0fs" % entry["median_seconds"], "median, start to green tests"),
             ("%d" % (entry["decisions"] // max(entry["runs"], 1)),
-             "decisions per task, 6 requests"),
+             "decisions per task, on average"),
             ("%d" % len(tasks), "tasks, each judged by its own tests"),
         ])
 
     pictures = [("assets/solved.svg", "Solved, by task"),
                 ("assets/speed.svg", "Seconds per task"),
-                ("assets/cost.svg", "Cost per task"),
-                ("assets/rate.svg", "Solved overall")]
+                ("assets/cost.svg", "Cost per task")]
     charts = "".join(
         '<figure><img src="%s" alt="%s" loading="lazy"></figure>' % (src, esc(alt))
         for src, alt in pictures if os.path.exists(os.path.join(out_dir, src)))

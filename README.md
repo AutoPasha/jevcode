@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://autopasha.github.io/jevcode/">Project page</a> ·
   <a href="#install">Install</a> ·
   <a href="#in-the-terminal">Terminal</a> ·
   <a href="#what-it-does-on-real-work">Measurements</a> ·
