@@ -23,6 +23,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import statistics
 import subprocess
 import sys
@@ -121,11 +122,23 @@ def run_builtin(directory: str, task: str, args) -> dict:
                   trace=Trace(quiet=True), max_steps=args.max_steps,
                   candidates=args.candidates, settle_at=args.settle_at)
     started = time.time()
+    # Contestants are held to a time limit and our own agent was not, so one
+    # task it circled on ate the whole run's budget and the stand stopped. The
+    # clock has to run the same for everybody, including us.
+    def ring(signum, frame):
+        raise TimeoutError("timed out after %ds" % args.timeout)
+    previous = signal.signal(signal.SIGALRM, ring)
+    signal.alarm(max(1, int(args.timeout)))
     try:
         outcome = agent.run()
         note = outcome.reason
+    except TimeoutError as ex:
+        note = str(ex)
     except (RuntimeError, KeyboardInterrupt) as ex:
         note = str(ex)[:200]
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
     same_money = (not writer_usage.currency
                   or writer_usage.currency == usage.currency)
     return {"seconds": round(time.time() - started, 2),

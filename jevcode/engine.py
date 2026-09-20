@@ -75,6 +75,7 @@ class Agent:
         self.verified = False           # the project's own check went red → green
         self.create_vetoed = False      # "a new file is not needed" already said once
         self._progress: verify.Result | None = None
+        self._baseline_seconds = 0.0    # how long the project's own check takes
         self._preopen()
 
     # ---------------------------------------------------------------- state
@@ -378,7 +379,7 @@ class Agent:
             return None
         before = self.baseline(command)
         trials = tryout.race(self.repo, command, path, region.start, region.end,
-                             result.alive)
+                             result.alive, timeout=self._patience())
         if not trials:
             return None
         self.trace.detail("tried %d candidates against `%s` at once: %s"
@@ -418,6 +419,19 @@ class Agent:
         result.reason = "the tests picked %s out of %d" % (winner, len(trials))
         return trials
 
+    def _patience(self) -> int:
+        """How long a candidate's test run may take before it is a hang.
+
+        The suite itself is the measure: it was just run once on this machine,
+        and a candidate that takes ten times that long is not slow, it is a
+        loop that never ends — which a writer produces often enough to matter
+        when six of them run at once. Without this the whole step waits out the
+        transport's own ceiling for something that will never finish.
+        """
+        if not self._baseline_seconds:
+            return 300
+        return int(max(20, min(300, self._baseline_seconds * 10)))
+
     def baseline(self, command: str) -> verify.Result:
         """Where the project's own check stood before the agent touched anything.
 
@@ -431,6 +445,7 @@ class Agent:
             else:
                 run = act.run(command, self.repo.root)
                 self._progress = verify.parse(run.output, run.code)
+                self._baseline_seconds = run.seconds
                 self.trace.detail("before the change: %s" % verify.describe(self._progress))
         return self._progress
 

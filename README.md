@@ -201,16 +201,19 @@ for keeping the decisions and the typing in separate models.
 `bench/profile.py` times a run by phase — wall clock, not a sum, since drafts
 are written in parallel:
 
-| task | total | System One | writer | your machine |
-| --- | --- | --- | --- | --- |
-| cart | 6.8s | 4.4s (65%) | 2.1s (31%) | 0.2s (4%) |
-| retry | 22.4s | 10.0s (45%) | 11.6s (52%) | 0.8s (4%) |
-| jsonflag | 43.7s | 11.6s (27%) | 31.7s (73%) | 0.4s (1%) |
+| task | total | System One | writer | tests | your machine |
+| --- | --- | --- | --- | --- | --- |
+| cart | 6.8s | 4.4s (65%) | 2.1s (31%) | — | 0.2s (4%) |
+| retry | 22.4s | 10.0s (45%) | 11.6s (52%) | — | 0.8s (4%) |
+| jsonflag | 43.7s | 11.6s (27%) | 31.7s (73%) | — | 0.4s (1%) |
+| bowling (a class from nothing) | 13.1s | 1.0s (8%) | 10.0s (77%) | 1.9s (14%) | 0.1s (1%) |
 
-Reading files, running tests and applying patches — the part people assume is
-slow — is 1–4% of a run. A System One request costs about 0.8s whatever you ask
-it, so on a short task the decisions dominate and on a long one the drafts do.
-Both numbers move the same way: fewer round trips.
+Reading files and applying patches — the part people assume is slow — is about
+1% of a run. A System One request costs about 0.8s whatever you ask it, so on a
+short task the decisions dominate and on a long one the drafts do. The first
+three rows were measured before the drafts raced each other through the test
+command; the last one after, which is why it has a column of its own for the
+tests and why its one request is the whole of its decisions.
 
 Keeping the connection open is worth measuring rather than assuming.
 `bench/handshake.py` asks the same trivial question ten times each way:
@@ -226,6 +229,39 @@ gateway is near; on a distant endpoint the same pool saves a great deal more.
 The honest conclusion is that the round trips themselves are the cost, which is
 why the next thing worth building is deciding several steps in one request
 rather than making the trip faster.
+
+### The writer sets the clock, and it is not the writer you would guess
+
+Six exercises from the public set, chosen because each is the case this agent
+is supposed to be bad at: a class written from an empty skeleton. Same commit,
+same tasks, same five-minute limit, one attempt each. Only the writer differs:
+
+| writer | solved | total wall | per task |
+| --- | --- | --- | --- |
+| inception/mercury-2 | **6/6** | 75s | 7–27s |
+| MiniMax-M2.7 | 4/6 | 971s | 44–135s, two over the limit |
+
+Thirteen times the wall clock for the same six tasks and the same decisions,
+because one writer thinks before it types and the other does not. Asked for a
+whole class with room for 8000 tokens, MiniMax-M2.7 spent every one of them on
+reasoning — which this provider does not put in `content` at all — and returned
+nothing, four times out of four, in 110 seconds. The same brief to mercury-2:
+four usable drafts in 11.6 seconds. The thinking writer's times also swing hard
+— the same task came out at 119s, 249s and 455s on different runs — because how
+long a model thinks is not something you can budget for.
+
+What does not change between those two rows is the agent. Look again at the
+bowling line in the table above: one request to Jev, one second, eight per cent
+of a run. The whole decision layer of this agent is that second. Everything
+else is typing, which is why the writer is a setting and not a component.
+
+One more line about that writer, because it is not a footnote. mercury-2 cannot
+be driven by a conventional agent at all — pointed at it, opencode dies with
+`INVALID_TOOL_RESPONSE` on five of these six tasks, because the model does not
+emit usable tool calls. It does not need to here. The writer in this design is
+never asked to call anything; it types code into a brief assembled by the code
+around it, so models that no tool-calling harness can use are ordinary writers
+for jevcode.
 
 ## Against other agents
 
@@ -354,9 +390,18 @@ never guesses.
 **Candidates, not a candidate.** An edit asks the writer for six drafts at
 once. Drafts that do not parse, that came back empty, or that are identical to
 the current code are dropped in Python before anything is judged — facts first,
-opinion second. Jev ranks what survives. If the project's tests then reject the
-winner, the runner-up is already written and already judged, so backtracking
-costs one test run and no model calls at all.
+opinion second.
+
+**And the tests choose between what is left.** Every surviving draft is run
+against the project's own check at the same time, each in a throwaway copy of
+the repository. Green wins; if nothing is green, the draft that moved the most
+tests wins. Jev is asked which is best only when the runs cannot tell them
+apart, which on the public set is almost never. That replaced a chain — rank
+the pile, apply the favourite, run the suite, undo, apply the runner-up, run it
+again — with one suite's worth of waiting, no request, and an answer that is a
+fact instead of a ranking that can be wrong. A candidate still running ten
+times longer than the suite took before the change is a loop that never ends,
+and is abandoned rather than waited out.
 
 **A gate in front of every command.** Three questions — would this destroy
 work, is it unrelated to the task, does it reach outside the repository — asked
@@ -432,6 +477,24 @@ export JEVCODE_SYSTEMONE_URL=https://polza.ai/api/v1/systemone
 export JEVCODE_SYSTEMONE_KEY=...
 export JEVCODE_JEV_MODEL=typesafe/jev
 ```
+
+The writer is a separate choice and, as the numbers above say, the one that
+decides how long a run takes:
+
+```bash
+export JEVCODE_WRITER_URL=https://polza.ai/api/v1/chat/completions
+export JEVCODE_WRITER_KEY=...
+export JEVCODE_WRITER_MODEL=inception/mercury-2
+export JEVCODE_WRITER_TIMEOUT=300     # one draft, seconds; raise for a slow model
+export JEVCODE_WRITER_EXTRA='{"thinking": {"type": "disabled"}}'
+```
+
+`JEVCODE_WRITER_EXTRA` is merged into the request body as it stands. Providers
+spell their knobs differently and a thinking switch on the wrong model is worth
+minutes a call, so it is a setting rather than a table of special cases in the
+code. Where a provider does not report a price, `JEVCODE_WRITER_PRICE_IN` and
+`JEVCODE_WRITER_PRICE_OUT` (per million tokens) let the benchmark compute one
+that anybody can check against a published rate.
 
 ## License
 
