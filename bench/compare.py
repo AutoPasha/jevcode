@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import statistics
 import subprocess
@@ -106,6 +107,20 @@ def run_builtin(directory: str, task: str, args) -> dict:
             "drafts": writer_usage.calls, "note": note}
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def tidy(text: str, directory: str) -> str:
+    """The tail of an agent's output, without the colours or where it ran.
+
+    The working copy lives in a temporary directory whose name says more about
+    the machine that ran the benchmark than about the run, and results.json is
+    meant to be committed."""
+    text = ANSI.sub("", text).replace(directory, "<task dir>")
+    text = text.replace(os.path.dirname(directory), "<tmp>")
+    return " ".join(text.split())[-300:]
+
+
 def run_command(directory: str, task: str, spec: dict, timeout: int) -> dict:
     command = spec["command"].replace("{dir}", directory).replace("{task}", task)
     started = time.time()
@@ -113,7 +128,7 @@ def run_command(directory: str, task: str, spec: dict, timeout: int) -> dict:
     try:
         done = subprocess.run(command, shell=True, cwd=directory, env=env,
                               capture_output=True, timeout=timeout)
-        note = (done.stdout + done.stderr).decode("utf-8", "replace").strip()[-300:]
+        note = tidy((done.stdout + done.stderr).decode("utf-8", "replace"), directory)
     except subprocess.TimeoutExpired:
         note = "timed out after %ds" % timeout
     except OSError as ex:

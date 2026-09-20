@@ -1,18 +1,75 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="580" height="222" viewBox="0 0 580 222" role="img" class="s" aria-label="Seconds per task">
-<style>.s{font-family:ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif}.t{font-weight:600;font-size:15px}.l{font-size:12.5px}.v{font-size:12.5px;font-weight:600}.c{font-size:11.5px}text{fill:#0b0b0b}.m{fill:#52514e}rect.bg{fill:#fcfcfb}.s1{fill:#2a78d6}@media (prefers-color-scheme: dark){text{fill:#ffffff}.m{fill:#c3c2b7}rect.bg{fill:#1a1a19}.s1{fill:#3987e5}}</style>
-<rect class="bg" x="0" y="0" width="580" height="222" fill="#fcfcfb"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="580" height="808" viewBox="0 0 580 808" role="img" class="s" aria-label="Seconds per task">
+<style>.s{font-family:ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif}.t{font-weight:600;font-size:15px}.l{font-size:12.5px}.v{font-size:12.5px;font-weight:600}.c{font-size:11.5px}text{fill:#0b0b0b}.m{fill:#52514e}rect.bg{fill:#fcfcfb}.s1{fill:#2a78d6}.s2{fill:#eb6834}.s3{fill:#1baf7a}@media (prefers-color-scheme: dark){text{fill:#ffffff}.m{fill:#c3c2b7}rect.bg{fill:#1a1a19}.s1{fill:#3987e5}.s2{fill:#d95926}.s3{fill:#199e70}}</style>
+<rect class="bg" x="0" y="0" width="580" height="808" fill="#fcfcfb"/>
 <text class="t" x="16.0" y="26.0" fill="#0b0b0b">Seconds per task</text>
 <text class="c m" x="16.0" y="44.0" fill="#52514e">wall clock, averaged over the runs; lower is better</text>
-<text class="l m" x="106.0" y="81.0" text-anchor="end" fill="#52514e">cart</text>
-<rect class="s1" x="118" y="68.0" width="61.5" height="18" rx="4" fill="#2a78d6"/>
-<text class="v" x="187.5" y="82.0" fill="#0b0b0b">16s</text>
-<text class="l m" x="106.0" y="115.0" text-anchor="end" fill="#52514e">duration</text>
-<rect class="s1" x="118" y="102.0" width="101.9" height="18" rx="4" fill="#2a78d6"/>
-<text class="v" x="227.9" y="116.0" fill="#0b0b0b">26s</text>
-<text class="l m" x="106.0" y="149.0" text-anchor="end" fill="#52514e">retry</text>
-<rect class="s1" x="118" y="136.0" width="89.7" height="18" rx="4" fill="#2a78d6"/>
-<text class="v" x="215.7" y="150.0" fill="#0b0b0b">23s</text>
-<text class="l m" x="106.0" y="183.0" text-anchor="end" fill="#52514e">csvparse</text>
-<rect class="s1" x="118" y="170.0" width="398.0" height="18" rx="4" fill="#2a78d6"/>
-<text class="v" x="524.0" y="184.0" fill="#0b0b0b">102s</text>
+<rect class="s1" x="16.0" y="61.0" width="10" height="10" rx="2" fill="#2a78d6"/>
+<text class="c m" x="31.0" y="70.0" fill="#52514e">jevcode</text>
+<rect class="s2" x="99.4" y="61.0" width="10" height="10" rx="2" fill="#eb6834"/>
+<text class="c m" x="114.4" y="70.0" fill="#52514e">opencode-minimax</text>
+<rect class="s3" x="247.6" y="61.0" width="10" height="10" rx="2" fill="#1baf7a"/>
+<text class="c m" x="262.6" y="70.0" fill="#52514e">opencode-qwen30b</text>
+<text class="l m" x="106.0" y="123.0" text-anchor="end" fill="#52514e">cart</text>
+<rect class="s1" x="118" y="88.0" width="40.1" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="166.1" y="102.0" fill="#0b0b0b">20s</text>
+<rect class="s2" x="118" y="110.0" width="78.1" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="204.1" y="124.0" fill="#0b0b0b">40s</text>
+<rect class="s3" x="118" y="132.0" width="36.7" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="162.7" y="146.0" fill="#0b0b0b">19s</text>
+<text class="l m" x="106.0" y="201.0" text-anchor="end" fill="#52514e">csvparse</text>
+<rect class="s1" x="118" y="166.0" width="398.0" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="524.0" y="180.0" fill="#0b0b0b">202s</text>
+<rect class="s2" x="118" y="188.0" width="49.5" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="175.5" y="202.0" fill="#0b0b0b">25s</text>
+<rect class="s3" x="118" y="210.0" width="56.4" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="182.4" y="224.0" fill="#0b0b0b">29s</text>
+<text class="l m" x="106.0" y="279.0" text-anchor="end" fill="#52514e">duration</text>
+<rect class="s1" x="118" y="244.0" width="128.7" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="254.7" y="258.0" fill="#0b0b0b">65s</text>
+<rect class="s2" x="118" y="266.0" width="45.0" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="171.0" y="280.0" fill="#0b0b0b">23s</text>
+<rect class="s3" x="118" y="288.0" width="22.1" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="148.1" y="302.0" fill="#0b0b0b">11s</text>
+<text class="l m" x="106.0" y="357.0" text-anchor="end" fill="#52514e">jsdedupe</text>
+<rect class="s1" x="118" y="322.0" width="98.3" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="224.3" y="336.0" fill="#0b0b0b">50s</text>
+<rect class="s2" x="118" y="344.0" width="47.6" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="173.6" y="358.0" fill="#0b0b0b">24s</text>
+<rect class="s3" x="118" y="366.0" width="63.9" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="189.9" y="380.0" fill="#0b0b0b">32s</text>
+<text class="l m" x="106.0" y="435.0" text-anchor="end" fill="#52514e">jsonflag</text>
+<rect class="s1" x="118" y="400.0" width="87.8" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="213.8" y="414.0" fill="#0b0b0b">44s</text>
+<rect class="s2" x="118" y="422.0" width="59.0" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="185.0" y="436.0" fill="#0b0b0b">30s</text>
+<rect class="s3" x="118" y="444.0" width="20.1" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="146.1" y="458.0" fill="#0b0b0b">10s</text>
+<text class="l m" x="106.0" y="513.0" text-anchor="end" fill="#52514e">pagesize</text>
+<rect class="s1" x="118" y="478.0" width="147.4" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="273.4" y="492.0" fill="#0b0b0b">75s</text>
+<rect class="s2" x="118" y="500.0" width="42.2" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="168.2" y="514.0" fill="#0b0b0b">21s</text>
+<rect class="s3" x="118" y="522.0" width="38.7" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="164.7" y="536.0" fill="#0b0b0b">20s</text>
+<text class="l m" x="106.0" y="591.0" text-anchor="end" fill="#52514e">retry</text>
+<rect class="s1" x="118" y="556.0" width="44.6" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="170.6" y="570.0" fill="#0b0b0b">23s</text>
+<rect class="s2" x="118" y="578.0" width="61.2" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="187.2" y="592.0" fill="#0b0b0b">31s</text>
+<rect class="s3" x="118" y="600.0" width="31.6" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="157.6" y="614.0" fill="#0b0b0b">16s</text>
+<text class="l m" x="106.0" y="669.0" text-anchor="end" fill="#52514e">slugify</text>
+<rect class="s1" x="118" y="634.0" width="44.6" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="170.6" y="648.0" fill="#0b0b0b">23s</text>
+<rect class="s2" x="118" y="656.0" width="47.8" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="173.8" y="670.0" fill="#0b0b0b">24s</text>
+<rect class="s3" x="118" y="678.0" width="57.6" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="183.6" y="692.0" fill="#0b0b0b">29s</text>
+<text class="l m" x="106.0" y="747.0" text-anchor="end" fill="#52514e">ttlcache</text>
+<rect class="s1" x="118" y="712.0" width="9.1" height="18" rx="4" fill="#2a78d6"/>
+<text class="v" x="135.1" y="726.0" fill="#0b0b0b">5s</text>
+<rect class="s2" x="118" y="734.0" width="40.3" height="18" rx="4" fill="#eb6834"/>
+<text class="v" x="166.3" y="748.0" fill="#0b0b0b">20s</text>
+<rect class="s3" x="118" y="756.0" width="27.2" height="18" rx="4" fill="#1baf7a"/>
+<text class="v" x="153.2" y="770.0" fill="#0b0b0b">14s</text>
 </svg>

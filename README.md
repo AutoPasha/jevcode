@@ -161,23 +161,49 @@ credit. The charts below are drawn straight from the results file by
   <img src="docs/assets/speed.svg" alt="Seconds per task" width="560">
 </p>
 
-The four tasks above are the set as it stood on 2026-09-20; five more —
-creating a file from scratch, threading an argument through two modules, a TTL
-bug, a `--json` flag, and a JavaScript project — were added afterwards and are
-waiting on the next run.
+All nine ran on 2026-09-20, one attempt each, writer qwen3.5-9b:
 
-| task | solved | steps | decisions | requests | wall |
+| task | solved | decisions | requests | wall | cost |
 | --- | --- | --- | --- | --- | --- |
-| cart — a discount argument | yes | 4 | 73 | 6 | 15.7s |
-| duration — report whole days | yes | 6 | 107 | 8 | 26.0s |
-| retry — a max_delay cap in two functions | yes | 7 | 111 | 14 | 22.9s |
-| csvparse — doubled quotes inside a quoted field | no | 26 | 302 | 50 | 101.6s |
+| ttlcache — entries outliving their TTL | yes | 56 | 4 | 4.6s | 0.17 RUB |
+| cart — a discount argument | yes | 61 | 5 | 20.3s | 0.18 RUB |
+| retry — a max_delay cap in two functions | yes | 112 | 14 | 22.6s | 0.51 RUB |
+| jsonflag — a `--json` flag on a CLI | yes | 225 | 15 | 44.5s | 0.77 RUB |
+| duration — report whole days | yes | 227 | 15 | 65.2s | 0.88 RUB |
+| slugify — a new module from scratch | no | 238 | 32 | 22.6s | 0.93 RUB |
+| jsdedupe — dedupe in a JavaScript project | no | 236 | 26 | 49.8s | 0.87 RUB |
+| pagesize — thread an argument through two modules | no | 301 | 49 | 74.7s | 2.05 RUB |
+| csvparse — doubled quotes inside a quoted field | no | 305 | 51 | 201.7s | 2.26 RUB |
 
-Three out of four with qwen3.5-9b writing. The fourth is a writer problem, not a
-decision problem: point `JEVCODE_WRITER_MODEL` at inception/mercury-2 and the
-same agent solves it in **2 steps, 4 requests and 15 seconds**. Nothing else
-changes — which is the argument for keeping the decisions and the typing in
-separate models.
+**Five out of nine**, 0.96 RUB (about $0.011) per task including the failures.
+The pattern in that table is not subtle: every solved task is under 16 requests
+and every failed one is over 25. The agent does not slowly get a hard task
+wrong — it either sees the place in the first few steps or spends the whole
+budget circling. When the run ends with `ran out of steps`, more steps would
+not have helped; a cheaper way to notice it is lost would have.
+
+The fourth-hardest of these is a writer problem rather than a decision problem:
+point `JEVCODE_WRITER_MODEL` at inception/mercury-2 and csvparse comes out in
+**2 steps, 4 requests and 15 seconds**. Nothing else changes — which is the
+argument for keeping the decisions and the typing in separate models.
+
+### Where the seconds go
+
+`bench/profile.py` times a run by phase — wall clock, not a sum, since drafts
+are written in parallel:
+
+| task | total | System One | writer | your machine |
+| --- | --- | --- | --- | --- |
+| cart | 6.8s | 4.4s (65%) | 2.1s (31%) | 0.2s (4%) |
+| retry | 22.4s | 10.0s (45%) | 11.6s (52%) | 0.8s (4%) |
+| jsonflag | 43.7s | 11.6s (27%) | 31.7s (73%) | 0.4s (1%) |
+
+Reading files, running tests and applying patches — the part people assume is
+slow — is 1–4% of a run. A System One request costs about 0.8s whatever you ask
+it, so on a short task the decisions dominate and on a long one the drafts do.
+Both numbers move the same way: fewer round trips. That is what the connection
+reuse and the early-settle on drafts bought, and it is why the next thing worth
+building is deciding several steps in one request rather than one.
 
 ## Against other agents
 
@@ -186,7 +212,7 @@ the repository rather than the claims.
 
 ```bash
 cp bench/contestants.json.example bench/contestants.json   # edit to what you have
-python3 bench/compare.py --who jevcode,opencode --repeat 3
+python3 bench/compare.py --who all --repeat 3              # everyone, every task
 python3 bench/chart.py                                     # redraw the pictures
 ```
 
@@ -200,9 +226,29 @@ What gets measured: how often the tests go green, wall-clock seconds, and what
 the run cost where the provider reports it. Those are three different units and
 they never share an axis.
 
-> The head-to-head table lands here after the next run. The numbers above are
-> jevcode on its own; putting another agent's name in a table before it has run
-> would be a worse sin than an empty section.
+Run on 2026-09-20, nine tasks, one attempt each, opencode 1.18.31 as the other
+agent:
+
+| agent | model | solved | median time | cost per task |
+| --- | --- | --- | --- | --- |
+| opencode | MiniMax M2.7 | **8/9 (89%)** | 24.2s | not reported |
+| jevcode | Jev + qwen3.5-9b | 5/9 (56%) | 44.5s | 0.96 RUB (~$0.011) |
+| opencode | qwen3-coder-30b | 1/9 (11%) | 18.6s | not reported |
+
+Read the first row first: a frontier coding model driving an ordinary agent
+beats this one, and it is not close. That is the honest state of things and no
+amount of cheap decisions changes it today.
+
+The interesting row is the third. qwen3-coder-30b is a bigger, more capable
+model than the 9b jevcode writes with, and in a conventional agent it solves one
+task in nine — it writes TypeScript into a Python project, edits the test
+instead of the code, calls `npm test` where there is a Makefile. The same class
+of model, with Jev choosing where to look and which draft to keep, solves five.
+What the decisions buy is not intelligence; it is not getting lost.
+
+Cost is blank for the opencode rows because neither provider reports a price to
+the agent — MiniMax bills a plan, and the gateway does not return usage. We are
+not going to estimate someone else's bill and print it as a measurement.
 
 ## Install
 
@@ -341,12 +387,18 @@ python3 bench/locate.py                        # can it find the right file
 python3 bench/bestofn.py --tasks 80 --n 6      # how much the judge adds
 python3 bench/endtoend.py                      # every task, jevcode alone
 python3 bench/compare.py --who all --repeat 3  # jevcode against other agents
+python3 bench/profile.py --task retry          # where the seconds of a run go
 python3 bench/chart.py                         # redraw the README's pictures
 python3 -m unittest discover -s tests          # everything that needs no network
 ```
 
 `bench/bestofn.py` downloads HumanEval on first run and executes model-written
 code locally. Run it in a container if that bothers you — it should.
+
+A full sweep takes long enough that something will interrupt it, so it is
+worth running one pair at a time — `--only <task> --out bench/.runs/x.json` —
+and stitching the pieces together afterwards with `python3 bench/merge.py`.
+A run that dies at task seven then costs you task seven, not all nine.
 
 ## Using a gateway
 

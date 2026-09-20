@@ -6,3 +6,5 @@ build/
 *.egg-info/
 bench/HumanEval.jsonl
 *.jsonl
+bench/.runs/
+bench/contestants.json

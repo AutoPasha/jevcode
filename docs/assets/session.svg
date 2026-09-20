@@ -5,7 +5,7 @@
 <circle cx="38" cy="17" r="5.5" fill="#febc2e"/>
 <circle cx="56" cy="17" r="5.5" fill="#28c840"/>
 <text x="421" y="21" fill="#8b93a6" text-anchor="middle" font-size="11.5">jevcode --demo</text>
-<text x="18.0" y="58.0" fill="#8b93a6">demo project in /opt/autopasha/.tmp/demo/jevcode-demo-lrtn43js</text>
+<text x="18.0" y="58.0" fill="#8b93a6">demo project in /tmp/jevcode-demo</text>
 <text x="18.0" y="77.0" fill="#69d9e0">   _            _</text>
 <text x="18.0" y="96.0" fill="#69d9e0">  (_) _____   _(_) ___ ___   __| | ___</text>
 <text x="18.0" y="115.0" fill="#69d9e0">  | |/ _ \ \ / / |/ __/ _ \ / _` |/ _ \</text>

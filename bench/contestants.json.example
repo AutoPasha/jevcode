@@ -1,9 +1,10 @@
 {
   "//": "Copy to contestants.json and keep only the agents you actually have.",
   "//command": "{dir} is the copy of the task; {task} is the sentence, already quoted for you.",
+  "//models": "Naming the model matters more than naming the agent: the same CLI scores 8/9 and 1/9 depending on what is behind it.",
 
   "opencode": {
-    "command": "opencode run --dir {dir} \"{task}\""
+    "command": "opencode run --dir {dir} -m anthropic/claude-sonnet-4-5 --auto \"{task}\""
   },
   "claude": {
     "command": "claude -p \"{task}\" --permission-mode acceptEdits"
