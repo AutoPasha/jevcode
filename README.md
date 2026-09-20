@@ -1,0 +1,246 @@
+# jevcode
+
+A coding agent whose decisions are made by a model that cannot write a single
+character of code.
+
+[Jev](https://typesafe.ai) is a System One model. You hand it a state and typed
+questions — is this true, which of these, where on this scale — and it answers
+all of them at once with calibrated probabilities. It never writes text. Ask it
+for a function and it has nothing to say.
+
+That restriction buys something. A decision costs a fraction of a cent, comes
+back in well under a second, and 256 of them fit in one request. So jevcode
+asks constantly: which file does this task live in, which function, which of
+these six drafts is correct, is this command about to delete something, is the
+job actually done. A small fast model does the typing, and it is never asked
+what to do.
+
+```
+$ jevcode "make Cart.total accept a discount argument, taken off before tax"
+
+step 1 search  p=0.50 conf=0.54
+        searched 'Cart' → 2 files
+step 2 read    p=0.90 conf=0.98
+        opened cart.py (21 lines)
+step 3 edit    p=0.80 conf=0.86
+        writing cart.py Cart.total (lines 14-15) — 6 candidates
+        dropped 4: same as candidate A
+        chose A (p=0.72, works=0.93, out-of-scope=0.10)
+        python3 -m unittest discover -s tests -q passed with candidate A
+
+done — task carried out and checked
+73 decisions in 6 requests (5.2s, 41k tokens in) · 6 writer calls (12.6s) · 7.6s total
+```
+
+Every number on screen is a probability the model returned, not a summary of
+what it was thinking. When the agent goes somewhere odd you can see which
+question it answered badly, and fix that question.
+
+## Why it is shaped this way
+
+An ordinary coding agent spends its budget on deliberation. Each step means
+running a large model over a growing transcript, so steps are slow, expensive,
+and precious — which is why agents commit to the first plausible move and
+discover the alternatives by walking into them.
+
+Reverse the economics and the shape changes:
+
+| | ordinary agent | jevcode |
+| --- | --- | --- |
+| a decision | seconds, cents, a full context replay | ~200 ms, ~$0.0001, no transcript |
+| decisions per step | one | dozens, in one request |
+| looking ahead | take the step and find out | score the whole tree first |
+| picking among drafts | keep the first one | write six, judge six, keep the best |
+| checking a command | a deny list of regexes | three questions about this command |
+| context growth | every file read stays in the prompt forever | state is assembled per question |
+
+The last row matters more than it looks. Nothing accumulates in a prompt here.
+The state handed to Jev is built fresh for each request out of what the current
+question needs, so a long session does not slowly poison itself with everything
+it has ever read.
+
+## What it does on real work
+
+Measured on 2026-09-20, by the benchmarks in `bench/`, against this repository
+and HumanEval.
+
+**Judging beats guessing — where there is something to judge.** The writer
+produces N drafts for each of 80 HumanEval tasks, the tests decide which ones
+work, and Jev picks without ever seeing the tests:
+
+| writer | one draft | Jev picks among N | ceiling |
+| --- | --- | --- | --- |
+| llama-3.2-3b (8 drafts) | 49% | **78%** | 85% |
+| qwen3.5-9b (6 drafts) | 94% | 94% | 100% |
+
+A three-billion-parameter model with a judge in front of it lands within seven
+points of the best any of its drafts could do, at 1148 questions across 80
+requests and five minutes of model time. The second row is the honest other
+half: when the writer is already right 94% of the time on tasks this size, there
+is nothing left for a judge to win, and it wins nothing. Candidates are
+deduplicated before judging — a Choice splits one unit of probability across its
+options, so three copies of the right answer split their own vote three ways and
+lose to a single wrong one. That detail is worth ten points on the first row.
+
+**Finding the place, with no index.** 15 questions about this repository, each
+with a known answer. No embeddings, no vector store, nothing to keep fresh —
+every run reads the tree from scratch: **13/15 correct**, 30 questions in 15
+requests, 12 seconds total.
+
+**Four repositories end to end.** `bench/tasks/` holds four small projects, each
+with a feature missing and a failing test that demands it. The agent gets one
+sentence and the directory; the project's own tests decide. No partial credit.
+
+| task | solved | steps | decisions | requests | wall |
+| --- | --- | --- | --- | --- | --- |
+| cart — a discount argument | yes | 4 | 73 | 6 | 15.7s |
+| duration — report whole days | yes | 6 | 107 | 8 | 26.0s |
+| retry — a max_delay cap in two functions | yes | 7 | 111 | 14 | 22.9s |
+| csvparse — doubled quotes inside a quoted field | no | 26 | 302 | 50 | 101.6s |
+
+Three out of four with qwen3.5-9b writing. The fourth is a writer problem, not a
+decision problem: point `JEVCODE_WRITER_MODEL` at inception/mercury-2 and the
+same agent solves it in **2 steps, 4 requests and 15 seconds**. Nothing else
+changes — which is the argument for keeping the decisions and the typing in
+separate models.
+
+## Install
+
+```bash
+pipx install git+https://github.com/AutoPasha/jevcode
+# or: uvx --from git+https://github.com/AutoPasha/jevcode jevcode "..."
+```
+
+Two keys. Jev decides, and something cheap writes:
+
+```bash
+export TYPESAFE_API_KEY=...          # console.typesafe.ai/keys
+export JEVCODE_WRITER_KEY=...        # any OpenAI-compatible endpoint
+export JEVCODE_WRITER_URL=https://api.openai.com/v1/chat/completions
+export JEVCODE_WRITER_MODEL=gpt-4o-mini
+```
+
+The writer should be small and fast. It is asked for six drafts at a time and
+judged on all six, so throughput is worth more here than pedigree — a 9B model
+at 91% one-shot ends up at 95% under the judge, and it is cheap enough to ask
+six times.
+
+## Use
+
+```bash
+jevcode "rename the --verbose flag to --loud everywhere"
+jevcode --dry-run "add retries to the HTTP client"   # show the patch, change nothing
+jevcode where "the retry backoff"                    # find code, two requests
+jevcode plan "add a discount argument to Cart.total" # three moves ahead, one look
+jevcode --trace run.jsonl "..."                      # every probability, on disk
+```
+
+Useful flags: `-C DIR` to work somewhere else, `-n 8` for more drafts per edit,
+`--no-commands` to forbid running anything at all, `--max-steps`.
+
+## How a step works
+
+One request to Jev carries every question the step might need — the decision
+itself, and the arguments for each action it might choose:
+
+```python
+{
+  "action":         choice({read, search, edit, create, run, finish}),
+  "file":           choice(up to 255 files, described),
+  "region":         choice(the functions and classes of the open file),
+  "command":        choice(what the project itself declares: make, npm, pytest),
+  "query":          choice(literal strings taken from the task),
+  "done":           noul("carried out AND confirmed by a command?"),
+  "needs_human":    noul("does this need a decision only the owner can make?"),
+  "worth_read", "worth_edit", ...: noul("would this produce anything new?")
+}
+```
+
+Most of those answers are thrown away — whichever the chosen action does not
+need. They are speculative on purpose: a hundred extra questions cost about as
+much as one, so the agent weighs every option before every move instead of
+committing to the first one that looks plausible. `action` says what looks
+right and `worth_*` says whether it would produce anything new; the code
+multiplies them, so a popular but pointless move loses to a useful unlikely one.
+
+Then the code does the work. The model never executes anything, and the code
+never guesses.
+
+### Four things that fall out of cheap decisions
+
+**Candidates, not a candidate.** An edit asks the writer for six drafts at
+once. Drafts that do not parse, that came back empty, or that are identical to
+the current code are dropped in Python before anything is judged — facts first,
+opinion second. Jev ranks what survives. If the project's tests then reject the
+winner, the runner-up is already written and already judged, so backtracking
+costs one test run and no model calls at all.
+
+**A gate in front of every command.** Three questions — would this destroy
+work, is it unrelated to the task, does it reach outside the repository — asked
+about the actual command, every time. A deny list only catches the shapes
+somebody thought of; this reads `find . -delete` the way a person does. A few
+shapes are still refused outright, because no answer should be able to permit
+them.
+
+**Telling a broken toolchain from a broken patch.** A missing test runner fails
+exactly like a wrong change. Jev scores the output on a four-level rubric, and
+an environment fault keeps the edit instead of throwing it away.
+
+**Growing the window when a region keeps failing.** Some changes cannot be made
+in one place: a new argument has to appear both in the function that takes it
+and in the one that passes it down, and patching either half alone leaves the
+tests red. A region that has already failed is retried wider — its neighbours
+first, then the whole file. On the benchmark that one rule turned a task the
+agent had been grinding at for 26 steps into seven.
+
+**Three moves ahead in one request.** `jevcode plan` runs a beam search over
+future actions: each branch carries its own assumed history inside the state,
+and each question addresses its branch by path, so one request answers "what
+next" for the whole frontier. Width three, depth three, about a second. Paths
+are scored by the geometric mean of their probabilities, so a longer plan is
+not punished for being longer.
+
+## What it is not good at
+
+Jev is a System One model, and the [rough edges](https://docs.typesafe.ai/model-jaggedness/jev-1.13)
+are documented honestly by the people who trained it. It reads literally, it
+does not count, it is not a calculator, and accuracy drops as you pile
+irrelevant detail into the state. Everything numeric in this agent is done in
+Python for that reason.
+
+Beyond the model: jevcode edits one file at a time. Two functions in the same
+file are fine — a region that fails its tests is retried wider, first with its
+neighbours and then as the whole file — but a change spread across five files
+takes five passes and may lose the thread between them. `create` is not wired
+up yet. There is no conversation — the task is stated once, and the
+agent either carries it out or stops. Large repositories are handled by grep and
+a 255-file shortlist, which is enough more often than it sounds, but it is not
+a substitute for knowing where things are.
+
+It is version 0.1. Bring a repository under version control and read the diff.
+
+## Running the benchmarks
+
+```bash
+python3 bench/locate.py                        # can it find the right file
+python3 bench/bestofn.py --tasks 80 --n 6      # how much the judge adds
+python3 bench/endtoend.py                      # four repositories, four failing suites
+python3 -m unittest discover -s tests          # everything that needs no network
+```
+
+`bench/bestofn.py` downloads HumanEval on first run and executes model-written
+code locally. Run it in a container if that bothers you — it should.
+
+## Using a gateway
+
+Any endpoint that speaks the same protocol works in place of TypeSafe:
+
+```bash
+export JEVCODE_SYSTEMONE_URL=https://polza.ai/api/v1/systemone
+export JEVCODE_SYSTEMONE_KEY=...
+export JEVCODE_JEV_MODEL=typesafe/jev
+```
+
+## License
+
+MIT.

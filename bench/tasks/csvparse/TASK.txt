@@ -1,0 +1,1 @@
+make parse_line understand a doubled quote inside a quoted field as one literal quote character

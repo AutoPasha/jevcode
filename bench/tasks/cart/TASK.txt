@@ -1,0 +1,1 @@
+make Cart.total accept a discount argument: a fraction taken off the subtotal before tax

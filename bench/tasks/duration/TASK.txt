@@ -1,0 +1,1 @@
+make human_duration report whole days as well, so 90061 seconds reads as 1d 1h 1m 1s

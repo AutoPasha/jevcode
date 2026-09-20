@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jevcode"
+version = "0.1.0"
+description = "A coding agent whose decisions are made by a model that cannot write text"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "AutoPasha" }]
+keywords = ["agent", "cli", "typesafe", "jev", "system-one", "coding-agent"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Code Generators",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/AutoPasha/jevcode"
+Issues = "https://github.com/AutoPasha/jevcode/issues"
+
+[project.scripts]
+jevcode = "jevcode.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jevcode"]
