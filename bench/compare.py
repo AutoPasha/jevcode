@@ -88,6 +88,37 @@ def tampered(directory: str, before: dict) -> list:
     return sorted(n for n in before if after.get(n) != before[n])
 
 
+def fingerprint(tasks: str) -> dict:
+    """Checksums of the task library itself, which nobody is allowed to edit.
+
+    Every contestant is handed a throwaway copy, so the originals should be
+    untouched at the end of a run. On 2026-09-20 they were not: opencode found
+    its way out of the copy and solved `pagesize` in `bench/tasks/pagesize`
+    instead. Nothing warned, and the next run of that task would have started
+    from tests that were already green — which turns a benchmark into a
+    coin toss that nobody can see is broken."""
+    out = {}
+    for root, dirs, files in os.walk(tasks):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in files:
+            if name.endswith(".pyc"):
+                continue
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, tasks)
+            try:
+                out[rel] = hashlib.sha256(open(path, "rb").read()).hexdigest()
+            except OSError:
+                out[rel] = "unreadable"
+    return out
+
+
+def library_changed(tasks: str, before: dict) -> list:
+    """Which of the original task files a run left different, if any."""
+    after = fingerprint(tasks)
+    names = set(before) | set(after)
+    return sorted(n for n in names if before.get(n) != after.get(n))
+
+
 def tests_pass(directory: str, timeout: int = 180) -> bool:
     try:
         return subprocess.run(["make", "test"], cwd=directory, capture_output=True,
@@ -183,16 +214,26 @@ def run_command(directory: str, task: str, spec: dict, timeout: int) -> dict:
     command = spec["command"].replace("{dir}", directory).replace("{task}", quoted(task))
     started = time.time()
     env = dict(os.environ, **(spec.get("env") or {}))
+    broken = ""
     try:
         done = subprocess.run(command, shell=True, cwd=directory, env=env,
                               capture_output=True, timeout=timeout)
         note = tidy((done.stdout + done.stderr).decode("utf-8", "replace"), directory)
+        # 126/127 is the shell saying it never found the thing to run. An agent
+        # that was never started did not fail the task, and writing that down
+        # as a zero is how a broken bench ends up published as a result: the
+        # 2026-09-20 run scored a contestant 0/9 because its binary had been
+        # swept out of the temp directory.
+        if done.returncode in (126, 127):
+            broken = "did not start: %s" % note
     except subprocess.TimeoutExpired:
         note = "timed out after %ds" % timeout
     except OSError as ex:
         note = str(ex)[:200]
+        broken = "did not start: %s" % note
     return {"seconds": round(time.time() - started, 2), "cost": 0.0, "currency": "",
-            "decisions": 0, "requests": 0, "drafts": 0, "note": note}
+            "decisions": 0, "requests": 0, "drafts": 0, "note": note,
+            "broken": broken}
 
 
 # -------------------------------------------------------------------- main
@@ -239,7 +280,9 @@ def main() -> int:
         print("no tasks in %s" % args.tasks, file=sys.stderr)
         return 2
 
-    rows = []
+    rows, broke = [], []
+    library = fingerprint(args.tasks)
+
     for name in names:
         task = task_text(name, args.tasks)
         for agent in who:
@@ -252,6 +295,27 @@ def main() -> int:
                     result = run_builtin(directory, task, args)
                 else:
                     result = run_command(directory, task, spec, args.timeout)
+                escaped = library_changed(args.tasks, library)
+                if escaped:
+                    # Put the originals back before anything else runs on them;
+                    # if they are not in git, say so rather than adopting the
+                    # edited files as the new truth.
+                    subprocess.run(["git", "checkout", "--", args.tasks],
+                                   cwd=os.path.dirname(HERE), capture_output=True)
+                    still = library_changed(args.tasks, library)
+                    library = fingerprint(args.tasks)
+                    result["broken"] = ("edited the task library itself: %s%s"
+                                        % (", ".join(escaped[:4]),
+                                           "" if not still else
+                                           " — and they are still changed on "
+                                           "disk, restore them before running "
+                                           "this task again"))
+                if result.pop("broken", ""):
+                    print("%-10s %-10s BROKE  %s" % (agent, name, result["note"][:80]),
+                          flush=True)
+                    shutil.rmtree(os.path.dirname(directory), ignore_errors=True)
+                    broke.append("%s on %s" % (agent, name))
+                    continue
                 after = tests_pass(directory)
                 changed = tampered(directory, fixed)
                 if changed:
@@ -264,6 +328,14 @@ def main() -> int:
                     agent, name, "pass" if row["passed"] else "fail",
                     row["seconds"], row["note"][:60].replace("\n", " ")), flush=True)
                 shutil.rmtree(os.path.dirname(directory), ignore_errors=True)
+
+    if broke:
+        # Nothing is written: a missing result keeps the pair in sweep.py's
+        # queue, where a zero would have quietly become part of the table.
+        print("\ncontestant never started: %s" % ", ".join(broke), file=sys.stderr)
+        print("nothing written to %s — fix the contestant and run it again"
+              % args.out, file=sys.stderr)
+        return 3
 
     payload = {"when": time.strftime("%Y-%m-%d %H:%M"), "runs": rows,
                "tasks": names, "agents": who}

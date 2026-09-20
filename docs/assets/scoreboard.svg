@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="344" viewBox="0 0 880 344" role="img" class="s" aria-label="Every contestant, measure by measure">
+<style>.s{font-family:ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif}.t{font-weight:600;font-size:15px}.l{font-size:12.5px}.v{font-size:12.5px;font-weight:600}.c{font-size:11.5px}.h{font-size:12.5px;font-weight:600}.b{font-size:14px;font-weight:600}text{fill:#0b0b0b}.m{fill:#52514e}rect.bg{fill:#fcfcfb}rect.win{fill:#e8f3ec}line.g,line.ax{stroke:#dcdbd6}.s1{fill:#2a78d6}.f1{fill:#2a78d6}.s2{fill:#eb6834}.f2{fill:#eb6834}.s3{fill:#1baf7a}.f3{fill:#1baf7a}.s4{fill:#8b5cf6}.f4{fill:#8b5cf6}@media (prefers-color-scheme: dark){text{fill:#ffffff}.m{fill:#c3c2b7}rect.bg{fill:#1a1a19}rect.win{fill:#1c2f25}line.g,line.ax{stroke:#3a3a37}.s1{fill:#3987e5}.f1{fill:#3987e5}.s2{fill:#d95926}.f2{fill:#d95926}.s3{fill:#199e70}.f3{fill:#199e70}.s4{fill:#9d7bf0}.f4{fill:#9d7bf0}}</style>
+<rect class="bg" x="0" y="0" width="880" height="344" fill="#fcfcfb"/>
+<text class="t" x="16.0" y="26.0" fill="#0b0b0b">Every contestant, measure by measure</text>
+<text class="c m" x="16.0" y="44.0" fill="#52514e">same nine tasks, one attempt each; the best cell in a row is filled</text>
+<rect class="s1" x="246.0" y="71.0" width="10" height="10" rx="2" fill="#2a78d6"/>
+<text class="h" x="262.0" y="80.0" fill="#0b0b0b">jevcode</text>
+<text class="c m" x="262.0" y="95.0" fill="#52514e">Jev + MiniMax-M2.7</text>
+<rect class="s2" x="400.5" y="71.0" width="10" height="10" rx="2" fill="#eb6834"/>
+<text class="h" x="416.5" y="80.0" fill="#0b0b0b">opencode</text>
+<text class="c m" x="416.5" y="95.0" fill="#52514e">MiniMax-M2.7</text>
+<rect class="s3" x="555.0" y="71.0" width="10" height="10" rx="2" fill="#1baf7a"/>
+<text class="h" x="571.0" y="80.0" fill="#0b0b0b">jevcode</text>
+<text class="c m" x="571.0" y="95.0" fill="#52514e">Jev + mercury-2</text>
+<rect class="s4" x="709.5" y="71.0" width="10" height="10" rx="2" fill="#8b5cf6"/>
+<text class="h" x="725.5" y="80.0" fill="#0b0b0b">opencode</text>
+<text class="c m" x="725.5" y="95.0" fill="#52514e">mercury-2</text>
+<line class="ax" x1="16" y1="104.0" x2="864" y2="104.0" stroke="#dcdbd6"/>
+<rect class="win" x="238.0" y="112.0" width="148.5" height="36.0" rx="6" fill="#e8f3ec"/>
+<text class="b" x="246.0" y="132.0" fill="#0b0b0b">100%</text>
+<text class="c m" x="246.0" y="147.0" fill="#52514e">9 of 9 tasks</text>
+<text class="l" x="400.5" y="132.0" fill="#0b0b0b">89%</text>
+<text class="c m" x="400.5" y="147.0" fill="#52514e">8 of 9 tasks</text>
+<text class="l" x="555.0" y="132.0" fill="#0b0b0b">89%</text>
+<text class="c m" x="555.0" y="147.0" fill="#52514e">8 of 9 tasks</text>
+<text class="l" x="709.5" y="132.0" fill="#0b0b0b">67%</text>
+<text class="c m" x="709.5" y="147.0" fill="#52514e">6 of 9 tasks</text>
+<text class="l" x="16.0" y="132.0" fill="#0b0b0b">Solved</text>
+<text class="c m" x="16.0" y="147.0" fill="#52514e">the project's own tests decide</text>
+<line class="g" x1="16" y1="150.0" x2="864" y2="150.0" stroke="#dcdbd6"/>
+<text class="l" x="246.0" y="176.0" fill="#0b0b0b">23.1s</text>
+<text class="l" x="400.5" y="176.0" fill="#0b0b0b">24.7s</text>
+<rect class="win" x="547.0" y="156.0" width="148.5" height="36.0" rx="6" fill="#e8f3ec"/>
+<text class="b" x="555.0" y="176.0" fill="#0b0b0b">10.0s</text>
+<text class="l" x="709.5" y="176.0" fill="#0b0b0b">72.5s</text>
+<text class="l" x="16.0" y="176.0" fill="#0b0b0b">Median task</text>
+<text class="c m" x="16.0" y="191.0" fill="#52514e">half the tasks are quicker than this</text>
+<line class="g" x1="16" y1="194.0" x2="864" y2="194.0" stroke="#dcdbd6"/>
+<text class="l" x="246.0" y="220.0" fill="#0b0b0b">83s</text>
+<text class="l" x="400.5" y="220.0" fill="#0b0b0b">39s</text>
+<rect class="win" x="547.0" y="200.0" width="148.5" height="36.0" rx="6" fill="#e8f3ec"/>
+<text class="b" x="555.0" y="220.0" fill="#0b0b0b">29s</text>
+<text class="l" x="709.5" y="220.0" fill="#0b0b0b">260s</text>
+<text class="l" x="16.0" y="220.0" fill="#0b0b0b">Slowest task</text>
+<text class="c m" x="16.0" y="235.0" fill="#52514e">the tail is what a person waits through</text>
+<line class="g" x1="16" y1="238.0" x2="864" y2="238.0" stroke="#dcdbd6"/>
+<text class="l" x="246.0" y="264.0" fill="#0b0b0b">352s</text>
+<text class="l" x="400.5" y="264.0" fill="#0b0b0b">240s</text>
+<rect class="win" x="547.0" y="244.0" width="148.5" height="36.0" rx="6" fill="#e8f3ec"/>
+<text class="b" x="555.0" y="264.0" fill="#0b0b0b">120s</text>
+<text class="l" x="709.5" y="264.0" fill="#0b0b0b">916s</text>
+<text class="l" x="16.0" y="264.0" fill="#0b0b0b">Whole benchmark</text>
+<text class="c m" x="16.0" y="279.0" fill="#52514e">every task, end to end</text>
+<line class="g" x1="16" y1="282.0" x2="864" y2="282.0" stroke="#dcdbd6"/>
+<rect class="win" x="238.0" y="288.0" width="148.5" height="36.0" rx="6" fill="#e8f3ec"/>
+<text class="b" x="246.0" y="308.0" fill="#0b0b0b">10.1</text>
+<text class="l" x="400.5" y="308.0" fill="#0b0b0b">not reported</text>
+<text class="l" x="555.0" y="308.0" fill="#0b0b0b">11.8</text>
+<text class="l" x="709.5" y="308.0" fill="#0b0b0b">not reported</text>
+<text class="l" x="16.0" y="308.0" fill="#0b0b0b">Model calls per task</text>
+<text class="c m" x="16.0" y="323.0" fill="#52514e">requests to a model, drafts included</text>
+</svg>

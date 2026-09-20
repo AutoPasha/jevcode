@@ -153,13 +153,8 @@ requests, 12 seconds total.
 **Small repositories end to end.** `bench/tasks/` holds nine small projects,
 each with a feature missing and a failing test that demands it. The agent gets
 one sentence and the directory; the project's own tests decide. No partial
-credit. The charts below are drawn straight from the results file by
-`bench/chart.py`, so they cannot drift from the numbers.
-
-<p align="center">
-  <img src="docs/assets/solved.svg" alt="Solved, by task" width="560"><br>
-  <img src="docs/assets/speed.svg" alt="Seconds per task" width="560">
-</p>
+credit. The pictures are further down, where the other agents are; here is
+the run itself.
 
 All nine ran on 2026-09-20, one attempt each, writer MiniMax-M2.7:
 
@@ -271,7 +266,7 @@ the repository rather than the claims.
 ```bash
 cp bench/contestants.json.example bench/contestants.json   # edit to what you have
 python3 bench/compare.py --who all --repeat 3              # everyone, every task
-python3 bench/chart.py                                     # redraw the pictures
+python3 bench/publish.py                                   # redraw this section
 ```
 
 Every contestant gets an untouched copy of the same directory, the same
@@ -280,34 +275,81 @@ prompt tuned per agent, no retries, no partial credit. `contestants.json` is a
 plain list of command templates with `{dir}` and `{task}` in them — it is yours
 to read and to argue with, which is the point.
 
-What gets measured: how often the tests go green, wall-clock seconds, and what
-the run cost where the provider reports it. Those are three different units and
-they never share an axis.
+All four rows below are the same nine tasks. Two agents, two writers, every
+combination — because an agent is only ever as quick as what it writes with,
+and a comparison that does not say which writer it used is not a comparison:
 
-Run on 2026-09-20, nine tasks, one attempt each, opencode 1.18.31 as the other
-agent. Both write with the same model, so what is compared is the harness:
+<p align="center">
+  <img src="docs/assets/scoreboard.svg" alt="jevcode against opencode, measure by measure" width="720">
+</p>
 
-| agent | model | solved | median time | cost per task |
+Read the first two columns: same writer, same tasks, different harness.
+We take nine out of nine against eight, and lose the clock — 352 seconds
+against 240 — because an edit here asks for six drafts and MiniMax-M2.7 thinks
+at length before each one. That is the honest half, and it is on the board.
+
+The last two columns are the same experiment with a writer that does not think
+first, and there the gap stops being a percentage:
+
+<p align="center">
+  <img src="docs/assets/speed.svg" alt="seconds per task, and who took each one" width="720">
+</p>
+
+Every one of the nine is quicker here, by between 1.8 and 62 times, and the
+whole benchmark takes two minutes instead of fifteen. The reason is not that
+our loop is cleverer at that moment — it is that a conventional agent needs its
+model to call tools, and mercury-2 does not emit tool calls at all. opencode
+spends the time flailing at that, and gets two thirds of the way. Our writer is never asked to call
+anything: it types code into a brief the surrounding code assembled, so a model
+no tool-calling harness can drive is an ordinary writer here, and it happens to
+be the quickest one available.
+
+That is what the decisions buy. Not a better draft — a harness that can use a
+writer chosen for speed instead of for manners.
+
+<p align="center">
+  <img src="docs/assets/solved.svg" alt="solved, task by task" width="720">
+</p>
+
+All four, by tasks solved:
+
+<p align="center">
+  <img src="docs/assets/leaderboard.svg" alt="every contestant, by tasks solved" width="720">
+</p>
+
+<!-- bench:table -->
+
+| agent | solved | median task | whole benchmark | model calls per task |
 | --- | --- | --- | --- | --- |
-| jevcode | Jev + MiniMax M2.7 | **9/9 (100%)** | 23.1s | 0.10 RUB + ~$0.016 |
-| opencode | MiniMax M2.7 | 8/9 (89%) | 24.7s | not reported |
-| opencode | qwen3-coder-30b | 1/9 (11%) | 18.6s | not reported |
+| jevcode · Jev + MiniMax-M2.7 | 9/9 (100%) | 23.1s | 352s | 10.1 |
+| jevcode · Jev + mercury-2 | 8/9 (89%) | 10.0s | 120s | 11.8 |
+| opencode · MiniMax-M2.7 | 8/9 (89%) | 24.7s | 240s | — |
+| opencode · mercury-2 | 6/9 (67%) | 72.5s | 916s | — |
 
-Nine tasks is a small set, and a hundred per cent on it means "nothing here was
-out of reach", not "this agent does not fail". Read the third row twice: it is
-the same benchmark from the other end. qwen3-coder-30b is a capable coding
-model, and in a conventional agent it solves one task in nine — it writes
-TypeScript into a Python project, edits the test instead of the code, calls
-`npm test` where there is a Makefile. What the decisions buy is not
-intelligence, it is not getting lost.
+Nine tasks, one attempt each, run 2026-09-20 on commit 0e4f21b. Each agent is shown with both writers it was measured on; the head-to-head pair shares one. Test files and Makefiles are checksummed, so a suite made green by rewriting its own tests does not count, and a run that edits the original task library instead of its own copy is not scored at all.
+
+<!-- /bench:table -->
+
+The pictures and that table are generated from `bench/results.json` by
+`bench/publish.py`, and `tests/test_charts.py` fails if what is committed is
+not what the results file would produce — so a number here cannot survive the
+run it came from being redone.
 
 Both agents were checked for the oldest way to pass a benchmark: every task
 ships a `.protected` list naming its test files and its Makefile, and a run
-that changed either of them does not count.
+that changed either of them does not count. A contestant whose command does not
+start at all is not scored zero either — the pair is left unrun, because a
+benchmark that scores a missing binary 0/9 is measuring the machine it ran on.
 
 Cost is blank for the opencode rows because neither provider reports a price to
 the agent — MiniMax bills a plan, and the gateway does not return usage. We are
 not going to estimate someone else's bill and print it as a measurement.
+
+The same benchmark from the other end, run on 2026-09-20 against
+qwen3-coder-30b: a capable coding model, and in a conventional agent it solved
+one task in nine — it writes TypeScript into a Python project, edits the test
+instead of the code, calls `npm test` where there is a Makefile. What the
+decisions buy is not intelligence, it is not getting lost.
 
 ## Install
 

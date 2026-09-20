@@ -433,12 +433,12 @@
 <section id="measured" class="reveal">
   <p class="kicker">Measured, not claimed</p>
   <h2>Numbers on this page are generated from the results file.</h2>
-  <p class="sub">Nine tasks, one attempt each, run 2026-09-20 on commit 3200a69. Both agents write with MiniMax-M2.7; jevcode makes its decisions with Jev. Test files and Makefiles are checksummed, so a suite made green by rewriting its own tests does not count.</p>
+  <p class="sub">Nine tasks, one attempt each, run 2026-09-20 on commit 0e4f21b. Each agent is shown with both writers it was measured on; the head-to-head pair shares one. Test files and Makefiles are checksummed, so a suite made green by rewriting its own tests does not count, and a run that edits the original task library instead of its own copy is not scored at all.</p>
 
-  <div class="figs"><figure><img src="assets/solved.svg" alt="Solved, by task" loading="lazy"></figure><figure><img src="assets/speed.svg" alt="Seconds per task" loading="lazy"></figure><figure><img src="assets/cost.svg" alt="Cost per task" loading="lazy"></figure></div>
+  <div class="figs"><figure><img src="assets/scoreboard.svg" alt="Every contestant, measure by measure" loading="lazy"></figure><figure><img src="assets/leaderboard.svg" alt="Leaderboard, by tasks solved" loading="lazy"></figure><figure><img src="assets/speed.svg" alt="Seconds per task" loading="lazy"></figure><figure><img src="assets/solved.svg" alt="Solved, by task" loading="lazy"></figure><figure><img src="assets/cost.svg" alt="Cost per task" loading="lazy"></figure></div>
 
   <div class="tbl scroll"><table><thead><tr><th>task</th><th>solved</th><th>decisions</th><th>requests</th><th>wall</th></tr></thead><tbody><tr><td class="mono">cart</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">23.1s</td></tr><tr><td class="mono">csvparse</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">51.0s</td></tr><tr><td class="mono">duration</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">22.5s</td></tr><tr><td class="mono">jsdedupe</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">14.3s</td></tr><tr><td class="mono">jsonflag</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">22.6s</td></tr><tr><td class="mono">pagesize</td><td class="yes">yes</td><td class="n">82</td><td class="n">6</td><td class="n">83.1s</td></tr><tr><td class="mono">retry</td><td class="yes">yes</td><td class="n">30</td><td class="n">2</td><td class="n">65.5s</td></tr><tr><td class="mono">slugify</td><td class="yes">yes</td><td class="n">81</td><td class="n">7</td><td class="n">57.2s</td></tr><tr><td class="mono">ttlcache</td><td class="yes">yes</td><td class="n">14</td><td class="n">1</td><td class="n">12.4s</td></tr></tbody></table></div>
-  <div class="tbl scroll"><table><thead><tr><th>agent</th><th>solved</th><th>median time</th><th>cost per task</th></tr></thead><tbody><tr><td>jevcode</td><td class="n">9/9 (100%)</td><td class="n">23.1s</td><td class="n">0.10 RUB</td></tr><tr><td>opencode-minimax</td><td class="n">8/9 (89%)</td><td class="n">24.7s</td><td class="n">—</td></tr></tbody></table></div>
+  <div class="tbl scroll"><table><thead><tr><th>agent</th><th>solved</th><th>median time</th><th>cost per task</th></tr></thead><tbody><tr><td>jevcode · Jev + MiniMax-M2.7</td><td class="n">9/9 (100%)</td><td class="n">23.1s</td><td class="n">0.10 RUB</td></tr><tr><td>opencode · MiniMax-M2.7</td><td class="n">8/9 (89%)</td><td class="n">24.7s</td><td class="n">—</td></tr><tr><td>jevcode · Jev + mercury-2</td><td class="n">8/9 (89%)</td><td class="n">10.0s</td><td class="n">0.70 RUB</td></tr><tr><td>opencode · mercury-2</td><td class="n">6/9 (67%)</td><td class="n">72.5s</td><td class="n">—</td></tr></tbody></table></div>
 
   <div class="two">
     <div class="card">
@@ -578,7 +578,7 @@ jevcode stats --days 7       <span class="c"># what it has cost you</span></pre>
 
 <footer>
   <div class="wrap">
-    <span>Measurements from 2026-09-20 14:49.</span>
+    <span>Measurements from 2026-09-20 18:39.</span>
     <span>Built from <code>bench/results.json</code> by <code>bench/site.py</code>.</span>
     <span class="spacer"><a href="https://github.com/AutoPasha/jevcode">GitHub</a></span>
     <span><a href="https://github.com/AutoPasha/jevcode/tree/main/bench">The benchmark</a></span>

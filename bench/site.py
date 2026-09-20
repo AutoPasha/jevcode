@@ -676,8 +676,14 @@ def build(payload: dict, out_dir: str) -> str:
             ("%d" % len(tasks), "tasks, each judged by its own tests"),
         ])
 
-    pictures = [("assets/solved.svg", "Solved, by task"),
+    # The scoreboard first: it answers "who wins, and on what" before a reader
+    # has to read an axis. `solved.svg` is only written when the contestants
+    # actually disagree somewhere, so it may not exist — the loop below skips
+    # whatever the charts decided was not worth drawing.
+    pictures = [("assets/scoreboard.svg", "Every contestant, measure by measure"),
+                ("assets/leaderboard.svg", "Leaderboard, by tasks solved"),
                 ("assets/speed.svg", "Seconds per task"),
+                ("assets/solved.svg", "Solved, by task"),
                 ("assets/cost.svg", "Cost per task")]
     charts = "".join(
         '<figure><img src="%s" alt="%s" loading="lazy"></figure>' % (src, esc(alt))
