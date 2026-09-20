@@ -201,9 +201,22 @@ are written in parallel:
 Reading files, running tests and applying patches — the part people assume is
 slow — is 1–4% of a run. A System One request costs about 0.8s whatever you ask
 it, so on a short task the decisions dominate and on a long one the drafts do.
-Both numbers move the same way: fewer round trips. That is what the connection
-reuse and the early-settle on drafts bought, and it is why the next thing worth
-building is deciding several steps in one request rather than one.
+Both numbers move the same way: fewer round trips.
+
+Keeping the connection open is worth measuring rather than assuming.
+`bench/handshake.py` asks the same trivial question ten times each way:
+
+| transport | median | first call |
+| --- | --- | --- |
+| fresh socket per call | 0.541s | 1.101s |
+| kept-alive pool | 0.480s | 0.735s |
+
+About 60ms a call, 11% — real on a run that makes fifty requests, and smaller
+than it looked before it was measured. The handshake is cheap because the
+gateway is near; on a distant endpoint the same pool saves a great deal more.
+The honest conclusion is that the round trips themselves are the cost, which is
+why the next thing worth building is deciding several steps in one request
+rather than making the trip faster.
 
 ## Against other agents
 
