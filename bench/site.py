@@ -9,6 +9,11 @@ what it claims is to run the benchmark again.
 
 `docs/` is what GitHub Pages serves, so the page and its charts sit beside each
 other and the links are plain relative paths.
+
+The template is a `string.Template`, not an f-string or `str.format`: the page
+carries a stylesheet full of braces, and doubling every one of them for the
+formatter is how a stylesheet quietly rots. Placeholders are `${name}`, and CSS
+has no dollars.
 """
 
 from __future__ import annotations
@@ -18,129 +23,629 @@ import html
 import json
 import os
 import sys
+from string import Template
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from compare import summarise                                    # noqa: E402
 
-PAGE = """<!doctype html>
+REPO = "https://github.com/AutoPasha/jevcode"
+
+PAGE = Template("""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>jevcode — a coding agent driven by decisions, not prose</title>
-<meta name="description" content="{tagline}">
+<meta name="description" content="${tagline}">
+<meta name="theme-color" content="#101014" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fcfcfb" media="(prefers-color-scheme: light)">
 <link rel="icon" href="assets/logo.svg">
+<meta property="og:title" content="jevcode">
+<meta property="og:description" content="${tagline}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://autopasha.github.io/jevcode/">
+<meta name="twitter:card" content="summary_large_image">${ogimage}
 <style>
-  :root {{
+  :root {
     color-scheme: light dark;
-    --surface: #fcfcfb; --panel: #ffffff; --text: #0b0b0b; --muted: #52514e;
-    --line: #e5e4e0; --accent: #2a78d6; --accent-2: #eb6834;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --surface: #131312; --panel: #1a1a19; --text: #f6f5f2; --muted: #c3c2b7;
-      --line: #2d2d2b; --accent: #3987e5; --accent-2: #d95926;
-    }}
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
+    --surface: #fcfcfb; --panel: #ffffff; --raise: #f4f3ef;
+    --text: #0b0b0b; --muted: #55544f; --faint: #86847d;
+    --line: #e4e3de; --line-soft: #efeeea;
+    --accent: #2a78d6; --accent-2: #eb6834; --good: #16875c;
+    --shadow: 0 1px 2px rgba(12,12,10,.05), 0 12px 32px -18px rgba(12,12,10,.28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface: #100f0e; --panel: #1a1a19; --raise: #201f1d;
+      --text: #f7f6f3; --muted: #b6b4ab; --faint: #85837a;
+      --line: #2b2a28; --line-soft: #232221;
+      --accent: #5aa0f0; --accent-2: #f07a45; --good: #34b483;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 18px 40px -22px rgba(0,0,0,.8);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
     margin: 0; background: var(--surface); color: var(--text);
-    font: 16px/1.6 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    font: 16px/1.65 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
           Helvetica, Arial, sans-serif;
-  }}
-  .wrap {{ max-width: 860px; margin: 0 auto; padding: 48px 20px 96px; }}
-  header {{ display: flex; gap: 20px; align-items: center; margin-bottom: 8px; }}
-  header img {{ width: 76px; height: 76px; }}
-  h1 {{ font-size: 40px; margin: 0; letter-spacing: -0.02em;
-       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }}
-  .tagline {{ color: var(--muted); font-size: 18px; margin: 4px 0 0; }}
-  h2 {{ font-size: 21px; margin: 44px 0 10px; letter-spacing: -0.01em; }}
-  p {{ margin: 12px 0; }}
-  a {{ color: var(--accent); }}
-  .row {{ display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }}
-  .btn {{
-    display: inline-block; padding: 9px 16px; border-radius: 9px;
-    border: 1px solid var(--line); text-decoration: none; color: var(--text);
-    background: var(--panel); font-size: 14.5px;
-  }}
-  .btn.primary {{ background: var(--accent); border-color: var(--accent); color: #fff; }}
-  pre {{
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 14px 16px; overflow-x: auto; font-size: 13.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+                     Consolas, "Liberation Mono", monospace; }
+  a { color: inherit; }
+  .wrap { width: min(1080px, 100% - 40px); margin: 0 auto; }
+
+  /* ── top bar ─────────────────────────────────────────────────────── */
+  .top {
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: saturate(140%) blur(10px);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .top .wrap { display: flex; align-items: center; gap: 22px; height: 58px; }
+  .brand { display: flex; align-items: center; gap: 9px; text-decoration: none;
+           font-weight: 650; letter-spacing: -0.01em; }
+  .brand img { width: 24px; height: 24px; border-radius: 6px; }
+  .top nav { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+  .top nav a { text-decoration: none; color: var(--muted); font-size: 14.5px; }
+  .top nav a:hover { color: var(--text); }
+  .top .ghlink {
+    color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 11px; background: var(--panel);
+  }
+  @media (max-width: 720px) { .top nav a.hide-sm { display: none; } }
+
+  /* ── hero ────────────────────────────────────────────────────────── */
+  .hero { padding: 40px 0 8px; }
+  .slab {
+    position: relative; overflow: hidden; border-radius: 22px;
+    background:
+      radial-gradient(1100px 380px at 8% -12%, rgba(42,120,214,.30), transparent 62%),
+      radial-gradient(760px 340px at 96% 8%, rgba(235,104,52,.22), transparent 60%),
+      linear-gradient(168deg, #16161b 0%, #111110 58%, #0d0d0c 100%);
+    color: #f6f5f2; padding: 54px 48px 48px;
+    box-shadow: 0 30px 70px -40px rgba(0,0,0,.75);
+  }
+  .slab::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(760px 400px at 20% 0%, #000 20%, transparent 78%);
+  }
+  .slab > * { position: relative; z-index: 1; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.02fr);
+               gap: 44px; align-items: center; }
+  @media (max-width: 940px) {
+    .slab { padding: 38px 24px 32px; border-radius: 18px; }
+    .hero-grid { grid-template-columns: 1fr; gap: 30px; }
+  }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; margin: 0 0 18px;
+    font-size: 12.5px; letter-spacing: .06em; text-transform: uppercase;
+    color: #cfd6e4; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.1);
+    padding: 5px 11px; border-radius: 999px;
+  }
+  .eyebrow b { color: #fff; font-weight: 600; letter-spacing: .04em; }
+  h1 {
+    margin: 0; font-size: clamp(32px, 4.4vw, 52px); line-height: 1.06;
+    letter-spacing: -0.033em; font-weight: 680;
+  }
+  h1 em { font-style: normal; color: #ffb894;
+          text-decoration: underline; text-decoration-color: rgba(235,104,52,.5);
+          text-underline-offset: 7px; text-decoration-thickness: 3px; }
+  .lede { margin: 20px 0 0; color: #ccccc4; font-size: 17px; max-width: 46ch; }
+  .lede b { color: #fff; font-weight: 600; }
+
+  .cta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .copy {
+    display: inline-flex; align-items: center; gap: 12px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,.16); background: rgba(0,0,0,.35);
+    color: #f6f5f2; border-radius: 11px; padding: 11px 14px; font-size: 13.5px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  }}
-  table {{ border-collapse: collapse; width: 100%; font-size: 14.5px; margin-top: 12px; }}
-  th, td {{ text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }}
-  th {{ color: var(--muted); font-weight: 600; font-size: 13px;
-       text-transform: uppercase; letter-spacing: 0.04em; }}
-  td.n {{ font-variant-numeric: tabular-nums; }}
-  .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-            gap: 12px; margin-top: 18px; }}
-  .card {{ background: var(--panel); border: 1px solid var(--line);
-           border-radius: 12px; padding: 16px; }}
-  .card b {{ display: block; font-size: 27px; letter-spacing: -0.02em; }}
-  .card span {{ color: var(--muted); font-size: 13.5px; }}
-  figure {{ margin: 18px 0; }}
-  figure img {{ width: 100%; max-width: 580px; border: 1px solid var(--line);
-                border-radius: 12px; background: var(--panel); }}
-  footer {{ margin-top: 56px; color: var(--muted); font-size: 13.5px;
-            border-top: 1px solid var(--line); padding-top: 18px; }}
+  }
+  .copy:hover { border-color: rgba(255,255,255,.34); }
+  .copy .tag { color: #8f8d85; }
+  .copy .done { color: #7ddcae; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+    border-radius: 11px; padding: 11px 17px; font-size: 14.5px; font-weight: 550;
+    border: 1px solid rgba(255,255,255,.16); color: #f6f5f2;
+  }
+  .btn.primary { background: #2a78d6; border-color: #2a78d6; color: #fff; }
+  .btn.primary:hover { background: #3384e4; }
+  .btn:hover { border-color: rgba(255,255,255,.34); }
+  .fine { margin: 18px 0 0; font-size: 13px; color: #96948c; }
+  .fine code { color: #c9c7bf; }
+
+  /* ── terminal window ─────────────────────────────────────────────── */
+  .term {
+    border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.12);
+    background: #0b0b0a; box-shadow: 0 24px 60px -30px rgba(0,0,0,.9);
+  }
+  .term .bar {
+    display: flex; align-items: center; gap: 7px; padding: 10px 14px;
+    background: rgba(255,255,255,.05); border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .term .bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a3a37; }
+  .term .bar i:first-child { background: #e05c4a; }
+  .term .bar i:nth-child(2) { background: #dfa53c; }
+  .term .bar i:nth-child(3) { background: #46b26a; }
+  .term .bar span { margin-left: 8px; font-size: 12px; color: #86847c;
+                    font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .term pre {
+    margin: 0; padding: 18px 18px 20px; overflow-x: auto; color: #d7d5cc;
+    font-size: 12.7px; line-height: 1.72; tab-size: 2;
+  }
+  .term .p  { color: #6f6d66; }
+  .term .a  { color: #7fb6f2; }
+  .term .q  { color: #f0a06a; }
+  .term .ok { color: #7ddcae; }
+  .term .u  { color: #f6f5f2; }
+  .term .c  { color: #86847c; }
+
+  /* ── stat strip ──────────────────────────────────────────────────── */
+  .strip {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 1px; background: var(--line); border: 1px solid var(--line);
+    border-radius: 16px; overflow: hidden; margin-top: 26px;
+  }
+  .strip div { background: var(--panel); padding: 20px 22px; }
+  .strip b { display: block; font-size: 27px; letter-spacing: -0.025em;
+             font-weight: 650; }
+  .strip span { color: var(--muted); font-size: 13.5px; }
+
+  /* ── sections ────────────────────────────────────────────────────── */
+  section { padding: 72px 0 0; }
+  .kicker { margin: 0 0 8px; color: var(--accent); font-size: 12.5px;
+            font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+  h2 { margin: 0; font-size: clamp(25px, 2.8vw, 33px); letter-spacing: -0.025em;
+       font-weight: 660; line-height: 1.18; }
+  h3 { margin: 0 0 6px; font-size: 16.5px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 14px 0 0; max-width: 62ch; }
+  p { margin: 14px 0; }
+  section > p:first-of-type { max-width: 68ch; }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+         gap: 22px; margin-top: 26px; align-items: start; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .card .num { font-size: 22px; font-weight: 650; letter-spacing: -0.02em;
+               display: block; margin-bottom: 2px; }
+
+  pre.code {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 13px;
+    padding: 17px 19px; overflow-x: auto; font-size: 13.3px; line-height: 1.7;
+    box-shadow: var(--shadow);
+  }
+  pre.code .c { color: var(--faint); }
+  pre.code .k { color: var(--accent); }
+  pre.code .s { color: var(--accent-2); }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; margin-top: 18px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  thead th { color: var(--muted); font-weight: 600; font-size: 12px;
+             text-transform: uppercase; letter-spacing: .05em;
+             border-bottom: 1px solid var(--line); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.n { font-variant-numeric: tabular-nums; }
+  td.yes { color: var(--good); font-weight: 600; }
+  td.no  { color: var(--muted); }
+  .tbl { border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+         background: var(--panel); box-shadow: var(--shadow); margin-top: 22px; }
+  .tbl table { margin: 0; }
+  .tbl th:first-child, .tbl td:first-child { padding-left: 20px; }
+  .scroll { overflow-x: auto; }
+
+  figure { margin: 0; }
+  figure img { display: block; width: 100%; border: 1px solid var(--line);
+               border-radius: 14px; background: var(--panel); }
+  .figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+          gap: 18px; margin-top: 26px; }
+  .shot { margin-top: 26px; border: 1px solid var(--line); border-radius: 16px;
+          overflow: hidden; background: var(--panel); box-shadow: var(--shadow); }
+  .shot img { display: block; width: 100%; }
+  .caption { color: var(--faint); font-size: 13px; margin-top: 10px; }
+  .caption a { color: var(--accent); }
+
+  ul.ticks { list-style: none; padding: 0; margin: 20px 0 0; }
+  ul.ticks li { padding: 9px 0 9px 28px; position: relative; color: var(--muted);
+                border-bottom: 1px solid var(--line-soft); font-size: 15px; }
+  ul.ticks li:last-child { border-bottom: 0; }
+  ul.ticks li::before {
+    content: ""; position: absolute; left: 6px; top: 18px; width: 7px; height: 7px;
+    border-radius: 50%; background: var(--accent);
+  }
+  ul.ticks b, ul.ticks code { color: var(--text); }
+  ul.ticks code { font-size: 13.5px; }
+
+  .note { border-left: 3px solid var(--accent-2); padding: 2px 0 2px 16px;
+          color: var(--muted); margin-top: 22px; }
+
+  .steps { counter-reset: s; display: grid; gap: 14px; margin-top: 26px; }
+  .steps > div { position: relative; padding-left: 46px; }
+  .steps > div::before {
+    counter-increment: s; content: counter(s);
+    position: absolute; left: 0; top: 2px; width: 28px; height: 28px;
+    display: grid; place-items: center; border-radius: 50%;
+    background: var(--raise); border: 1px solid var(--line);
+    font-size: 13px; font-weight: 650; color: var(--muted);
+  }
+
+  footer { margin-top: 84px; border-top: 1px solid var(--line); padding: 26px 0 60px;
+           color: var(--muted); font-size: 13.5px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: baseline; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+  footer .spacer { margin-left: auto; }
+
+  .reveal { opacity: 0; transform: translateY(14px); }
+  .reveal.in { opacity: 1; transform: none;
+               transition: opacity .55s ease, transform .55s cubic-bezier(.22,.7,.3,1); }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal, .reveal.in { opacity: 1; transform: none; transition: none; }
+  }
 </style>
 </head>
 <body>
+
+<div class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="assets/logo.svg" alt="">jevcode</a>
+    <nav>
+      <a class="hide-sm" href="#idea">How it works</a>
+      <a class="hide-sm" href="#measured">Measured</a>
+      <a class="hide-sm" href="#terminal">Terminal</a>
+      <a href="#install">Install</a>
+      <a class="ghlink" href="${repo}">GitHub</a>
+    </nav>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="slab">
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow"><b>v0.2</b> · MIT · no index, no vectors</p>
+          <h1>A coding agent that <em>decides</em> with a model that cannot write a word.</h1>
+          <p class="lede">
+            Jev answers typed questions — is this true, which of these, where on
+            this scale — with calibrated probabilities: <b>256 in one request,
+            about 200&nbsp;ms, a hundredth of a cent</b>. So jevcode asks about
+            everything before it moves, and a small fast model does the typing
+            under instructions it never chose.
+          </p>
+          <div class="cta">
+            <button class="copy" id="copy" type="button"
+                    data-cmd="pipx install git+${repo}">
+              <span class="tag">$</span>
+              <span class="cmd">pipx install git+${repo}</span>
+              <span class="done" id="copied" hidden>copied</span>
+            </button>
+          </div>
+          <div class="cta">
+            <a class="btn primary" href="#install">Install &amp; keys</a>
+            <a class="btn" href="#measured">What it scores</a>
+            <a class="btn" href="${repo}">Source</a>
+          </div>
+          <p class="fine">
+            No key to look around: <code>jevcode --demo</code> runs the whole
+            interface off a canned table, in a throwaway copy of a sample project.
+          </p>
+        </div>
+
+        <div class="term">
+          <div class="bar"><i></i><i></i><i></i><span>~/cart</span></div>
+<pre><span class="c">$</span> <span class="u">jevcode "make Cart.total accept a discount argument, taken off before tax"</span>
+
+<span class="a">step 1 search</span>  <span class="q">p=0.50</span> <span class="p">conf=0.54</span>
+        <span class="p">searched 'Cart' → 2 files</span>
+<span class="a">step 2 read</span>    <span class="q">p=0.90</span> <span class="p">conf=0.98</span>
+        <span class="p">opened cart.py (21 lines)</span>
+<span class="a">step 3 edit</span>    <span class="q">p=0.80</span> <span class="p">conf=0.86</span>
+        <span class="p">writing cart.py Cart.total (lines 14-15) — 6 candidates</span>
+        <span class="p">dropped 4: same as candidate A</span>
+        <span class="p">chose A (</span><span class="q">p=0.72, works=0.93, out-of-scope=0.10</span><span class="p">)</span>
+        <span class="ok">python3 -m unittest discover -s tests -q passed</span>
+
+<span class="ok">done — task carried out and checked</span>
+<span class="c">73 decisions in 6 requests (5.2s, 41k tokens in)</span>
+<span class="c">6 writer calls (12.6s) · 7.6s total</span>
+</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="strip">${cards}</div>
+  </div>
+</div>
+
 <div class="wrap">
 
-<header>
-  <img src="assets/logo.svg" alt="">
-  <div>
-    <h1>jevcode</h1>
-    <p class="tagline">{tagline}</p>
+<section id="idea" class="reveal">
+  <p class="kicker">The trade</p>
+  <h2>Reverse the price of a decision and the agent changes shape.</h2>
+  <p class="sub">
+    An ordinary coding agent spends its budget on deliberation: every step
+    replays a growing transcript through a large model. Steps are slow,
+    expensive and precious, which is why such an agent commits to the first
+    plausible move and finds out about the alternatives by walking into them.
+  </p>
+
+  <div class="tbl scroll">
+    <table>
+      <thead><tr><th></th><th>ordinary agent</th><th>jevcode</th></tr></thead>
+      <tbody>
+        <tr><td>a decision</td><td>seconds, cents, a full context replay</td>
+            <td>~200&nbsp;ms, ~$0.0001, no transcript</td></tr>
+        <tr><td>decisions per step</td><td>one</td><td>dozens, in one request</td></tr>
+        <tr><td>looking ahead</td><td>take the step and find out</td>
+            <td>score the whole tree first</td></tr>
+        <tr><td>picking among drafts</td><td>keep the first one</td>
+            <td>write six, judge six, keep the best</td></tr>
+        <tr><td>checking a command</td><td>a deny list of regexes</td>
+            <td>three questions about this exact command</td></tr>
+        <tr><td>context growth</td><td>every file read stays in the prompt forever</td>
+            <td>state is assembled per question</td></tr>
+      </tbody>
+    </table>
   </div>
-</header>
+  <p class="note">
+    That last row matters more than it looks. Nothing accumulates in a prompt
+    here: the state handed to Jev is built fresh for each question, so a long
+    session never slowly poisons itself with everything it has ever read.
+  </p>
+</section>
 
-<div class="row">
-  <a class="btn primary" href="https://github.com/AutoPasha/jevcode">Source</a>
-  <a class="btn" href="https://github.com/AutoPasha/jevcode#install">Install</a>
-  <a class="btn" href="https://github.com/AutoPasha/jevcode/tree/main/bench">The benchmark</a>
+<section class="reveal">
+  <p class="kicker">One step</p>
+  <h2>Every question the step might need, asked in a single request.</h2>
+  <p class="sub">
+    The decision itself and the arguments for each action it might choose go out
+    together. Most of the answers are thrown away — whichever the chosen action
+    does not need. They are speculative on purpose: a hundred extra questions
+    cost about as much as one.
+  </p>
+<pre class="code"><span class="k">{</span>
+  <span class="s">"action"</span>:         choice(<span class="c">{read, search, edit, create, run, finish}</span>),
+  <span class="s">"file"</span>:           choice(<span class="c">up to 255 files, described</span>),
+  <span class="s">"region"</span>:         choice(<span class="c">the functions and classes of the open file</span>),
+  <span class="s">"command"</span>:        choice(<span class="c">what the project declares: make, npm, pytest</span>),
+  <span class="s">"query"</span>:          choice(<span class="c">literal strings taken from the task</span>),
+  <span class="s">"done"</span>:           noul(<span class="c">"carried out AND confirmed by a command?"</span>),
+  <span class="s">"needs_human"</span>:    noul(<span class="c">"a decision only the owner can make?"</span>),
+  <span class="s">"worth_read"</span>, <span class="s">"worth_edit"</span>: noul(<span class="c">"would this produce anything new?"</span>),
+<span class="k">}</span></pre>
+
+  <div class="two">
+    <div class="card">
+      <h3>Candidates, not a candidate</h3>
+      <p>An edit asks the writer for six drafts at once. Drafts that do not
+      parse, came back empty, or match the current code are dropped in Python
+      before anything is judged — facts first, opinion second. If the tests
+      reject the winner, the runner-up is already written and already judged.</p>
+    </div>
+    <div class="card">
+      <h3>A gate in front of every command</h3>
+      <p>Would this destroy work, is it unrelated to the task, does it reach
+      outside the repository — asked about the actual command, every time. A
+      deny list only catches the shapes somebody thought of; this reads
+      <code>find . -delete</code> the way a person does.</p>
+    </div>
+    <div class="card">
+      <h3>A broken toolchain is not a broken patch</h3>
+      <p>A missing test runner fails exactly like a wrong change. The output is
+      scored on a four-level rubric, and an environment fault keeps the edit
+      instead of throwing away a change that was fine.</p>
+    </div>
+    <div class="card">
+      <h3>Three moves ahead, one request</h3>
+      <p>A beam search over future actions: each branch carries its own assumed
+      history, each question addresses its branch by path, so one request
+      answers "what next" for the whole frontier. Width three, depth three,
+      about a second.</p>
+    </div>
+  </div>
+</section>
+
+<section id="measured" class="reveal">
+  <p class="kicker">Measured, not claimed</p>
+  <h2>Numbers on this page are generated from the results file.</h2>
+  <p class="sub">${method}</p>
+
+  <div class="figs">${charts}</div>
+
+  ${tasktable}
+  ${agenttable}
+
+  <div class="two">
+    <div class="card">
+      <span class="num">49% → 78%</span>
+      <p>What the judge adds. The writer produces N drafts for 80 HumanEval
+      tasks, the tests decide which work, and Jev picks without ever seeing
+      them: llama-3.2-3b goes from 49% one-shot to 78%, against a ceiling of
+      85% — 1148 questions in 80 requests. With a writer already at 94% there
+      is nothing left to win, and it wins nothing.</p>
+    </div>
+    <div class="card">
+      <span class="num">13 / 15</span>
+      <p>Finding the right file with no index at all. Fifteen questions about
+      this repository, each with a known answer, every run reading the tree
+      from scratch: 30 questions in 15 requests, 12 seconds. Nothing to embed,
+      nothing to keep fresh.</p>
+    </div>
+  </div>
+
+  <p class="note">
+    The head-to-head against another terminal agent lands here after the next
+    run. The harness is already in the repository — <code>bench/compare.py</code>,
+    a plain list of command templates — because putting another agent's name in
+    a table before it has run would be worse than an empty section.
+  </p>
+</section>
+
+<section id="terminal" class="reveal">
+  <p class="kicker">In the terminal</p>
+  <h2>A prompt you can live in, not a dashboard.</h2>
+  <p class="sub">
+    <code>jevcode</code> with no arguments opens a session in the current
+    directory. Everything scrolls, everything can be copied out, and the only
+    thing that repaints is the status line.
+  </p>
+
+  <div class="shot"><img src="assets/session.svg" alt="a jevcode session in the terminal"></div>
+  <p class="caption">
+    Recorded with <code>jevcode --demo</code>, which answers from a table so the
+    interface can be shown without a key.
+    <a href="assets/demo.svg">The same recording moving</a>, and the raw cast
+    beside it if you would rather replay it yourself.
+  </p>
+
+  <div class="two">
+    <div>
+      <ul class="ticks">
+        <li><code>@path</code> puts a file in front of the agent, matched on any
+            tail of its path.</li>
+        <li><code>!command</code> runs a shell command yourself without leaving.</li>
+        <li><b>/undo moves the files</b>, not just the transcript — so it works
+            in a directory that is not a git repository at all.</li>
+        <li>Sessions survive the terminal closing: <code>jevcode -c</code>
+            carries on, <code>/sessions</code> lists them.</li>
+        <li>Before an edit or a command you get the diff and a question, with
+            "yes, and stop asking" as the second option.</li>
+        <li><code>AGENTS.md</code> is read if the project has one — the same file
+            the other terminal agents look for.</li>
+      </ul>
+    </div>
+    <div class="tbl scroll">
+      <table>
+        <thead><tr><th>command</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="mono">/new /clear</td><td>start over</td></tr>
+          <tr><td class="mono">/sessions /resume</td><td>list and switch</td></tr>
+          <tr><td class="mono">/undo /redo</td><td>move the files back and forward</td></tr>
+          <tr><td class="mono">/diff</td><td>everything this session changed</td></tr>
+          <tr><td class="mono">/cost</td><td>decisions, requests, seconds, money</td></tr>
+          <tr><td class="mono">/models /model</td><td>who decides, who writes, swap the writer</td></tr>
+          <tr><td class="mono">/details</td><td>show or hide each decision as it is made</td></tr>
+          <tr><td class="mono">/permission</td><td>ask, allow or deny — how much it asks</td></tr>
+          <tr><td class="mono">/init</td><td>write an AGENTS.md</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="reveal">
+  <p class="kicker">Install</p>
+  <h2>Two keys: one decides, one writes.</h2>
+
+  <div class="steps">
+    <div>
+      <h3>Put it on the machine</h3>
+<pre class="code">pipx install git+${repo}
+<span class="c"># or: uvx --from git+${repo} jevcode "..."</span></pre>
+    </div>
+    <div>
+      <h3>Point it at a model that decides and one that types</h3>
+<pre class="code">export TYPESAFE_API_KEY=...          <span class="c"># console.typesafe.ai/keys</span>
+export JEVCODE_WRITER_KEY=...        <span class="c"># any OpenAI-compatible endpoint</span>
+export JEVCODE_WRITER_URL=https://api.openai.com/v1/chat/completions
+export JEVCODE_WRITER_MODEL=gpt-4o-mini</pre>
+      <p class="caption">
+        The writer should be small and fast. It is asked for six drafts at a
+        time and judged on all six, so throughput is worth more here than
+        pedigree. Any gateway speaking the same protocol works in place of
+        TypeSafe.
+      </p>
+    </div>
+    <div>
+      <h3>Work</h3>
+<pre class="code">jevcode                      <span class="c"># a session here</span>
+jevcode -c                   <span class="c"># carry on where you left off</span>
+jevcode run "rename the --verbose flag to --loud everywhere"
+jevcode where "the retry backoff"     <span class="c"># find code, two requests</span>
+jevcode plan "add a discount to Cart.total"  <span class="c"># three moves ahead</span>
+jevcode stats --days 7       <span class="c"># what it has cost you</span></pre>
+    </div>
+  </div>
+</section>
+
+<section class="reveal">
+  <p class="kicker">Honestly</p>
+  <h2>What it is not good at.</h2>
+  <p class="sub">
+    Jev is a System One model and its rough edges are documented by the people
+    who trained it. It reads literally, it does not count, it is not a
+    calculator, and accuracy drops as irrelevant detail piles into the state.
+    Everything numeric in this agent is done in Python for that reason.
+  </p>
+  <ul class="ticks">
+    <li>One region at a time. Two functions in the same file are fine, a
+        two-file change is normal, five files in one sentence is optimistic.</li>
+    <li>Large repositories are handled by grep and a 255-file shortlist — often
+        enough, but no substitute for knowing where things are.</li>
+    <li>Nothing streams token by token, because the model that decides has no
+        tokens to stream.</li>
+    <li>It is version 0.2. Bring a repository under version control and read
+        the diff.</li>
+  </ul>
+</section>
+
 </div>
-
-<h2>The idea</h2>
-<p>
-  Jev answers typed questions — is this true, which of these, where on this
-  scale — with calibrated probabilities, in about two hundred milliseconds, up
-  to 256 of them in one request. It cannot write a line of code, and that is
-  the point: decisions become almost free, so the agent asks about everything
-  before it moves, and a small fast model does the typing under instructions it
-  never chose.
-</p>
-
-<div class="cards">{cards}</div>
-
-<h2>Measured</h2>
-<p>{method}</p>
-{charts}
-
-<h2>The table</h2>
-{table}
-
-<h2>Try it</h2>
-<pre>pipx install git+https://github.com/AutoPasha/jevcode
-jevcode --demo        # the whole interface, no key, nothing charged
-jevcode               # a session in this directory</pre>
 
 <footer>
-  Measurements from {when}. Everything on this page is generated from
-  <code>bench/results.json</code> by <code>bench/site.py</code> — re-run the
-  benchmark and the page changes with it. MIT licensed.
+  <div class="wrap">
+    <span>Measurements from ${when}.</span>
+    <span>Built from <code>bench/results.json</code> by <code>bench/site.py</code>.</span>
+    <span class="spacer"><a href="${repo}">GitHub</a></span>
+    <span><a href="${repo}/tree/main/bench">The benchmark</a></span>
+    <span><a href="README.ru.md">По-русски</a></span>
+    <span><a href="${repo}/blob/main/LICENSE">MIT</a></span>
+  </div>
 </footer>
 
-</div>
+<script>
+  var button = document.getElementById("copy");
+  if (button && navigator.clipboard) {
+    button.addEventListener("click", function () {
+      navigator.clipboard.writeText(button.dataset.cmd).then(function () {
+        var mark = document.getElementById("copied");
+        mark.hidden = false;
+        setTimeout(function () { mark.hidden = true; }, 1600);
+      });
+    });
+  }
+  var blocks = document.querySelectorAll(".reveal");
+  if (!window.IntersectionObserver ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    blocks.forEach(function (el) { el.classList.add("in"); });
+  } else {
+    var watcher = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("in");
+          watcher.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: "-40px 0px -10% 0px" });
+    blocks.forEach(function (el) { watcher.observe(el); });
+  }
+</script>
 </body>
 </html>
-"""
+""")
 
-TAGLINE = "a coding agent whose decisions are made by a model that cannot write text"
+TAGLINE = ("a coding agent whose decisions are made by a model that cannot "
+           "write text — hundreds of them per step, one request, no index")
 
 
 def esc(text) -> str:
@@ -154,44 +659,74 @@ def build(payload: dict, out_dir: str) -> str:
     tasks = list(dict.fromkeys(r["task"] for r in rows))
 
     best = max(agents, key=lambda a: totals[a]["rate"])
+    entry = totals[best]
     cards = "".join(
-        '<div class="card"><b>%s</b><span>%s</span></div>' % (esc(value), esc(label))
+        "<div><b>%s</b><span>%s</span></div>" % (esc(value), esc(label))
         for value, label in [
-            ("%d%%" % totals[best]["rate"], "of tasks solved by %s" % best),
-            ("%.0fs" % totals[best]["median_seconds"], "median, start to green tests"),
-            ("%d" % (totals[best]["decisions"] // max(totals[best]["runs"], 1)),
-             "decisions per task"),
+            ("%d%%" % entry["rate"], "of tasks solved, tests deciding"),
+            ("%.0fs" % entry["median_seconds"], "median, start to green tests"),
+            ("%d" % (entry["decisions"] // max(entry["runs"], 1)),
+             "decisions per task, 6 requests"),
             ("%d" % len(tasks), "tasks, each judged by its own tests"),
         ])
 
     pictures = [("assets/solved.svg", "Solved, by task"),
                 ("assets/speed.svg", "Seconds per task"),
-                ("assets/cost.svg", "Cost per task")]
+                ("assets/cost.svg", "Cost per task"),
+                ("assets/rate.svg", "Solved overall")]
     charts = "".join(
-        '<figure><img src="%s" alt="%s"></figure>' % (src, esc(alt))
+        '<figure><img src="%s" alt="%s" loading="lazy"></figure>' % (src, esc(alt))
         for src, alt in pictures if os.path.exists(os.path.join(out_dir, src)))
 
-    head = ("<table><tr><th>agent</th><th>solved</th><th>median time</th>"
-            "<th>cost per task</th></tr>")
+    # Per task: the row a reader actually argues with — which task, was it
+    # green, and what it took to get there.
+    head = ("<div class=\"tbl scroll\"><table><thead><tr><th>task</th>"
+            "<th>solved</th><th>decisions</th><th>requests</th><th>wall</th>"
+            "</tr></thead><tbody>")
     body = ""
-    for agent in sorted(agents, key=lambda a: -totals[a]["rate"]):
-        entry = totals[agent]
-        money = ("%.2f %s" % (entry["cost"] / max(entry["runs"], 1), entry["currency"])
-                 if entry["cost"] else "—")
-        body += ("<tr><td>%s</td><td class=\"n\">%d/%d (%d%%)</td>"
-                 "<td class=\"n\">%.1fs</td><td class=\"n\">%s</td></tr>"
-                 % (esc(agent), entry["passed"], entry["runs"], entry["rate"],
-                    entry["median_seconds"], esc(money)))
-    table = head + body + "</table>"
+    for task in tasks:
+        run = next((r for r in rows if r["task"] == task and r["agent"] == best), None)
+        if not run:
+            continue
+        verdict = ('<td class="yes">yes</td>' if run["passed"]
+                   else '<td class="no">no</td>')
+        body += ("<tr><td class=\"mono\">%s</td>%s<td class=\"n\">%d</td>"
+                 "<td class=\"n\">%d</td><td class=\"n\">%.1fs</td></tr>"
+                 % (esc(task), verdict, run.get("decisions", 0),
+                    run.get("requests", 0), run.get("seconds", 0.0)))
+    tasktable = head + body + "</tbody></table></div>"
+
+    # Between agents: only worth a table once a second one has actually run.
+    agenttable = ""
+    if len(agents) > 1:
+        head = ("<div class=\"tbl scroll\"><table><thead><tr><th>agent</th>"
+                "<th>solved</th><th>median time</th><th>cost per task</th>"
+                "</tr></thead><tbody>")
+        body = ""
+        for agent in sorted(agents, key=lambda a: -totals[a]["rate"]):
+            row = totals[agent]
+            money = ("%.2f %s" % (row["cost"] / max(row["runs"], 1), row["currency"])
+                     if row["cost"] else "—")
+            body += ("<tr><td>%s</td><td class=\"n\">%d/%d (%d%%)</td>"
+                     "<td class=\"n\">%.1fs</td><td class=\"n\">%s</td></tr>"
+                     % (esc(agent), row["passed"], row["runs"], row["rate"],
+                        row["median_seconds"], esc(money)))
+        agenttable = head + body + "</tbody></table></div>"
 
     method = payload.get("note") or (
         "Every agent gets an untouched copy of the same directory, the same "
         "sentence and the same time limit, and the project's own tests decide. "
         "No partial credit, no prompt tuned per agent.")
 
-    page = PAGE.format(tagline=esc(TAGLINE), cards=cards, charts=charts,
-                       table=table, method=esc(method),
-                       when=esc(payload.get("when", "an unrecorded run")))
+    ogimage = ""
+    if os.path.exists(os.path.join(out_dir, "assets/og.png")):
+        ogimage = ('\n<meta property="og:image" '
+                   'content="https://autopasha.github.io/jevcode/assets/og.png">')
+
+    page = PAGE.safe_substitute(
+        tagline=esc(TAGLINE), cards=cards, charts=charts, tasktable=tasktable,
+        agenttable=agenttable, method=esc(method), repo=REPO, ogimage=ogimage,
+        when=esc(payload.get("when", "an unrecorded run")))
     path = os.path.join(out_dir, "index.html")
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(page)
