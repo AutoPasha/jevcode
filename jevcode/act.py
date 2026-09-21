@@ -106,6 +106,9 @@ def syntax_error(rel: str, text: str) -> str:
         return _check_with(["node", "--check"], rel, text)
     if suffix in (".ts", ".tsx") and shutil.which("tsc"):
         return _check_with(["tsc", "--noEmit", "--skipLibCheck"], rel, text)
+    if suffix in (".html", ".htm", ".css", ".scss"):
+        from . import markup
+        return markup.syntax(rel, text)
     return ""
 
 

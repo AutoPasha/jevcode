@@ -54,6 +54,15 @@ class Repo:
         tracked = self._git(["ls-files", "-z"])
         if tracked is not None:
             out = [p for p in tracked.split("\0") if p]
+            # ...and everything git does not track yet, which is where the
+            # agent's own new files live. Listing only tracked files made the
+            # agent blind to what it had just written: it created index.html
+            # ten times in a row, each pass overwriting the last, because the
+            # path still looked free to a question that asks for a file that
+            # "does not exist yet".
+            fresh = self._git(["ls-files", "-z", "--others", "--exclude-standard"])
+            if fresh is not None:
+                out += [p for p in fresh.split("\0") if p]
         else:
             for base, dirs, names in os.walk(self.root):
                 dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]

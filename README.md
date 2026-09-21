@@ -472,6 +472,41 @@ next" for the whole frontier. Width three, depth three, about a second. Paths
 are scored by the geometric mean of their probabilities, so a longer plan is
 not punished for being longer.
 
+### A project with nothing to run
+
+Ask it for a landing page and there is no suite to go green: a directory with
+an `index.html` in it declares no pytest, no npm script, no Makefile. The first
+live run of "index.html with a hero, three feature blocks, pricing and a signup
+form, plus style.css" went badly in a way worth writing down. The agent wrote
+index.html ten times over, each pass throwing away the last, never wrote the
+stylesheet, and stopped only because it ran out of steps.
+
+Three things were wrong, and none of them were about HTML. The repository was
+listed with `git ls-files`, so a file the agent had just created did not exist
+as far as the agent was concerned — which is why the same path kept coming back
+as a good place for a new file. `create` was allowed to land on a path that was
+already there. And "done" was a question about a green command, which in a
+repository with no command is a question that can only be answered no.
+
+What stands in for the suite is a page check: the markup parses, every tag is
+closed, and every file the page tells a browser to load exists. It is a parse
+and a few `stat` calls, it costs nothing, and it is a fact rather than an
+opinion — which is the same reason the test counts are read in Python. Two
+softer facts sit beside it and do not block finishing: classes the markup uses
+that no stylesheet mentions, and pictures hosted on someone else's domain.
+
+| | before | after |
+| --- | --- | --- |
+| index.html | written 10 times, last one kept | written once |
+| style.css | never written | written, and completed where classes were missing |
+| stopped because | ran out of steps (10) | said it was done (3–6 steps) |
+| wall clock | 600s, cut off | 91–297s |
+
+Both numbers are one attempt each on an empty git repository, writer
+MiniMax-M2.7. The last run went six steps because it kept going after the two
+files existed: five classes in the markup had no rules, so it edited the
+stylesheet until none were left.
+
 ## What it is not good at
 
 Jev is a System One model, and the [rough edges](https://docs.typesafe.ai/model-jaggedness/jev-1.13)

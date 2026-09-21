@@ -186,6 +186,7 @@ def draft(one, writer, repo, rel: str, start: int, end: int, task: str,
     body = repo.read(rel).splitlines()
     region_text = "\n".join(body[start - 1:end])
     tail = (RELATED.format(body=related[:6000]) if related else "")
+    tail += _house(rel)
     fail = (FAILURE.format(command=failure[0], output=failure[1][-1500:]) if failure else "")
     if whole:
         total = len(body)
@@ -294,9 +295,32 @@ Create a new file: {path}
 It has to fit a project that already contains these files:
 
 {tree}
-{related}
+{related}{house}
 Write the complete contents of {path}. Reply with one fenced code block and
 nothing else."""
+
+# What a page has to survive: being opened from disk, with no network. The
+# first live run of the landing-page task came back with a hero pointing at
+# unsplash and three feature icons pointing at via.placeholder.com — a domain
+# that no longer resolves at all. On screen that is a grey rectangle and three
+# broken-image glyphs, which is what "it cannot even do HTML" looks like.
+HOUSE_MARKUP = """
+House rules for markup and stylesheets in this project:
+* the page must look finished with no network: no <img src> or CSS url()
+  pointing at another domain, no placeholder image services, no hotlinked
+  photographs;
+* pictures and icons are made in the file itself — inline SVG, a CSS gradient,
+  a styled shape, or a text glyph;
+* every class used in the markup gets rules in the stylesheet, the footer and
+  the form included;
+* only files that exist in the tree, or ones this task also creates, may be
+  linked with href or src.
+"""
+
+
+def _house(rel: str) -> str:
+    return HOUSE_MARKUP if rel.lower().endswith(
+        (".html", ".htm", ".css", ".scss")) else ""
 
 
 def create(one, writer, repo, rel: str, task: str, n: int = 4, related: str = "",
@@ -311,7 +335,8 @@ def create(one, writer, repo, rel: str, task: str, n: int = 4, related: str = ""
     tree = "\n".join(repo.files()[:120])
     prompt = NEW_BRIEF.format(
         task=task, path=rel, tree=tree,
-        related=RELATED.format(body=related[:4000]) if related else "")
+        related=RELATED.format(body=related[:4000]) if related else "",
+        house=_house(rel))
     room = budget("", related, whole=True)
     drafts = writer.drafts(prompt, n=n, system=NEW_SYSTEM, max_tokens=room,
                            enough=settle_at, grace=settle_grace)

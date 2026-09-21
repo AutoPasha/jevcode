@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from . import act, gate, locate, patch, questions, tryout, verify
+from . import act, gate, locate, markup, patch, questions, tryout, verify
 from .repo import Region, Repo
 from .systemone import SystemOne, Usage
 from .trace import Trace
@@ -140,6 +140,40 @@ class Agent:
                                    for e in self.edits]
         if self.checks:
             state["last_check"] = self.checks[-1]
+        pages = self.page_check()
+        if pages is not None:
+            state["page_check"] = pages
+        return state
+
+    def page_check(self) -> dict | None:
+        """The standing facts about the pages in this repository.
+
+        A landing page has no suite to run, so this is what stands in for one:
+        the markup parses and every file the page loads exists, or it does not
+        and the sentence saying so is in front of the model on every step.
+        Cheap enough to redo each time — it is a parse and a few `stat` calls.
+        """
+        pages = [f for f in self.repo.files() if markup.watched(f)]
+        if not pages or len(pages) > 30:
+            return None
+        found, bare, remote = {}, {}, {}
+        for rel in pages:
+            trouble = markup.problems(self.repo, rel)
+            if trouble:
+                found[rel] = trouble
+            missing = markup.unstyled(self.repo, rel)
+            if missing:
+                bare[rel] = missing[:12]
+            outside = markup.remote_pictures(self.repo, rel)
+            if outside:
+                remote[rel] = outside[:6]
+        state = {"pages": pages, "problems": found,
+                 "verdict": "every page parses and every file it links to exists"
+                            if not found else "some pages have problems"}
+        if bare:
+            state["classes_with_no_rules"] = bare
+        if remote:
+            state["pictures_hosted_elsewhere"] = remote
         return state
 
     def related_code(self, path: str) -> str:
@@ -155,6 +189,15 @@ class Agent:
             name = os.path.basename(candidate)
             if ("test" in name or "spec" in name) and stem in self.repo.read(candidate):
                 return "%s:\n%s" % (candidate, self.repo.read(candidate))
+        if path.lower().endswith((".css", ".scss", ".js")):
+            # A stylesheet's test is the page that loads it: class names it has
+            # to match are all in there, and a writer that never sees the
+            # markup styles selectors nobody uses.
+            asked = os.path.basename(path)
+            for candidate in self.repo.files():
+                if candidate.lower().endswith((".html", ".htm")) \
+                        and asked in self.repo.read(candidate):
+                    return "%s:\n%s" % (candidate, self.repo.read(candidate))
         return ""
 
     def note(self, text: str) -> None:
@@ -187,9 +230,11 @@ class Agent:
         queries = {term: None for term in locate.search_terms(self.task)
                    if term not in self.searched}
 
-        answers = self.one.ask(self.state(), questions.step(
+        state = self.state()
+        answers = self.one.ask(state, questions.step(
             files=files, regions=regions, commands=commands, queries=queries,
-            has_open_file=bool(self.open_path), has_edits=bool(self.edits)))
+            has_open_file=bool(self.open_path), has_edits=bool(self.edits),
+            has_pages="page_check" in state))
 
         if answers.p("needs_human") >= questions.HUMAN:
             self.trace.record("stop", why="needs_human", p=answers.p("needs_human"))
@@ -479,6 +524,7 @@ class Agent:
                 self.note("edited %s %s" % (path, region.label))
                 self.trace.record("edit", path=path, region=region.label,
                                   letter=candidate.letter, checked=False)
+                self._note_page(path)
                 return edit
             run = act.run(command, self.repo.root)
             after = verify.parse(run.output, run.code)
@@ -705,6 +751,18 @@ class Agent:
             self.note("considered creating a file; the task does not call for one")
             return self._read(answers)
         path = a.pick("path")
+        if os.path.exists(os.path.join(self.repo.root, path)):
+            # Creating is for files that are not there. A file that exists gets
+            # opened and edited instead — otherwise the whole of it is thrown
+            # away and written again from one draft, which is how a landing
+            # page got rewritten ten times and never finished.
+            self.trace.detail("%s already exists; opening it instead of writing it again" % path)
+            self.note("%s already exists: opening it rather than creating it again" % path)
+            self.open_path = path
+            total = len(self.repo.read(path).splitlines())
+            self.open_focus = (1, min(total or 1, OPEN_WINDOW))
+            self.opened[path] = self.open_focus
+            return None
         self.trace.detail("creating %s (p=%.2f)" % (path, a.probs("path").get(path, 0.0)))
         self.trace.record("create", path=path, needed=a.p("needed"),
                           ranked=a.ranked("path")[:4])
@@ -735,7 +793,45 @@ class Agent:
         self.open_focus = (1, min(len(body.splitlines()), OPEN_WINDOW))
         self.trace.good("created %s (%d lines)" % (path, len(body.splitlines())))
         self.note("created %s (%d lines)" % (path, len(body.splitlines())))
+        self._note_page(path)
         return None
+
+    def _note_page(self, path: str) -> None:
+        """Say out loud what the page check found, right after the write.
+
+        The standing state carries the same facts, but the history is what the
+        model reads as a story of the work, and "index.html links to style.css,
+        and that file does not exist" is the sentence that sends it to write
+        the stylesheet instead of the page again.
+        """
+        if not markup.watched(path):
+            return
+        found = markup.problems(self.repo, path)
+        said = markup.describe(path, found)
+        self.checks.append({"command": "page check", "ok": not found, "output": said})
+        self.trace.record("page", path=path, ok=not found, problems=found[:4])
+        (self.trace.bad if found else self.trace.good)(said)
+        self.note(said)
+        outside = markup.remote_pictures(self.repo, path)
+        if outside:
+            where = ("%s shows %d picture(s) from another domain, which will be "
+                     "blank without a network: %s"
+                     % (path, len(outside), ", ".join(outside[:3])))
+            self.trace.detail(where)
+            self.note(where)
+        # A stylesheet is judged by the page that loads it, so after writing
+        # one, say which of that page's classes still have no rules at all.
+        for page in self.repo.files():
+            if not page.lower().endswith((".html", ".htm")):
+                continue
+            if page != path and os.path.basename(path) not in self.repo.read(page):
+                continue
+            missing = markup.unstyled(self.repo, page)
+            if missing:
+                bare = ("%s uses %d classes no stylesheet mentions: %s"
+                        % (page, len(missing), ", ".join(missing[:6])))
+                self.trace.detail(bare)
+                self.note(bare)
 
     def _permitted(self, kind: str, key: str, preview: str = "") -> bool:
         if self.permit is None:

@@ -62,8 +62,34 @@ ACTIONS = {
 }
 
 
+def _done(has_commands: bool, has_pages: bool) -> dict:
+    """"Finished" means something different in a project that cannot be run.
+
+    The original question demanded a green command, which is right for a
+    repository with a test suite and impossible for one without: a landing page
+    declares no pytest, no npm script and no Makefile, so the honest answer was
+    always "false" and the agent could never stop. Where there is nothing to
+    run, the evidence is the code itself plus `page_check`, which is a fact
+    about the tree rather than an opinion about it.
+    """
+    if has_commands:
+        return noul({
+            "question": "Is `task` fully carried out in the code AND confirmed by a command in `history`?",
+        }, {"true": "The change exists in the code and a run of the project's own command passed after it",
+            "false": "The change is missing, partial, or was never checked by running anything"})
+    if has_pages:
+        return noul({
+            "question": "Does the code now in the repository contain everything `task` asks for, with no problems left in `page_check`?",
+        }, {"true": "Every file and every part the task names exists in the code, and `page_check.problems` is empty",
+            "false": "Something the task asks for is missing or incomplete, or `page_check.problems` still lists something"})
+    return noul({
+        "question": "Does the code now in the repository contain everything `task` asks for?",
+    }, {"true": "Every file and every part the task names has been written",
+        "false": "Something the task asks for is still missing or incomplete"})
+
+
 def step(files: dict, regions: dict, commands: dict, queries: dict,
-         has_open_file: bool, has_edits: bool) -> dict:
+         has_open_file: bool, has_edits: bool, has_pages: bool = False) -> dict:
     """One speculative fan-out: the decision and every argument it might need.
 
     Only some of these answers get used — whichever the chosen action calls for.
@@ -77,10 +103,7 @@ def step(files: dict, regions: dict, commands: dict, queries: dict,
                         "Do not repeat a step from `history` that produced nothing new.",
         }, {name: spec for name, spec in ACTIONS.items()
             if not (name in ("edit",) and not has_open_file)}),
-        "done": noul({
-            "question": "Is `task` fully carried out in the code AND confirmed by a command in `history`?",
-        }, {"true": "The change exists in the code and a run of the project's own command passed after it",
-            "false": "The change is missing, partial, or was never checked by running anything"}),
+        "done": _done(bool(commands), has_pages),
         "needs_human": noul({
             "question": "Does carrying out `task` require a decision only the repository's owner can make?",
         }, {"true": "It needs a product decision, a credential, or permission to delete or publish something",
