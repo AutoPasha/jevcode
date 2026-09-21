@@ -10,51 +10,51 @@
 <line class="g" x1="38.0" y1="228.0" x2="704" y2="228.0" stroke="#dcdbd6"/>
 <text class="c m" x="30.0" y="232.0" text-anchor="end" fill="#52514e">0</text>
 <line class="g" x1="38.0" y1="153.0" x2="704" y2="153.0" stroke="#dcdbd6"/>
-<text class="c m" x="30.0" y="157.0" text-anchor="end" fill="#52514e">1.25</text>
+<text class="c m" x="30.0" y="157.0" text-anchor="end" fill="#52514e">1</text>
 <line class="g" x1="38.0" y1="78.0" x2="704" y2="78.0" stroke="#dcdbd6"/>
-<text class="c m" x="30.0" y="82.0" text-anchor="end" fill="#52514e">2.5</text>
-<rect class="s1" x="47.4" y="213.8" width="26.0" height="14.2" rx="3" fill="#2a78d6"/>
-<text class="c" x="60.4" y="208.8" text-anchor="middle" fill="#0b0b0b">0.24</text>
+<text class="c m" x="30.0" y="82.0" text-anchor="end" fill="#52514e">2</text>
+<rect class="s1" x="47.4" y="201.2" width="26.0" height="26.8" rx="3" fill="#2a78d6"/>
+<text class="c" x="60.4" y="196.2" text-anchor="middle" fill="#0b0b0b">0.36</text>
 <text class="c m" x="88.4" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="74.4" y="246.0" text-anchor="middle" fill="#0b0b0b">cart</text>
 <text class="c m" x="74.4" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="120.3" y="192.0" width="26.0" height="36.0" rx="3" fill="#2a78d6"/>
-<text class="c" x="133.3" y="187.0" text-anchor="middle" fill="#0b0b0b">0.60</text>
+<rect class="s1" x="120.3" y="190.1" width="26.0" height="37.9" rx="3" fill="#2a78d6"/>
+<text class="c" x="133.3" y="185.1" text-anchor="middle" fill="#0b0b0b">0.51</text>
 <text class="c m" x="161.3" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="147.3" y="246.0" text-anchor="middle" fill="#0b0b0b">csvparse</text>
 <text class="c m" x="147.3" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="193.2" y="199.6" width="26.0" height="28.4" rx="3" fill="#2a78d6"/>
-<text class="c" x="206.2" y="194.6" text-anchor="middle" fill="#0b0b0b">0.47</text>
+<rect class="s1" x="193.2" y="193.0" width="26.0" height="35.0" rx="3" fill="#2a78d6"/>
+<text class="c" x="206.2" y="188.0" text-anchor="middle" fill="#0b0b0b">0.47</text>
 <text class="c m" x="234.2" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="220.2" y="246.0" text-anchor="middle" fill="#0b0b0b">duration</text>
 <text class="c m" x="220.2" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="266.1" y="213.1" width="26.0" height="14.9" rx="3" fill="#2a78d6"/>
-<text class="c" x="279.1" y="208.1" text-anchor="middle" fill="#0b0b0b">0.25</text>
+<rect class="s1" x="266.1" y="210.0" width="26.0" height="18.0" rx="3" fill="#2a78d6"/>
+<text class="c" x="279.1" y="205.0" text-anchor="middle" fill="#0b0b0b">0.24</text>
 <text class="c m" x="307.1" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="293.1" y="246.0" text-anchor="middle" fill="#0b0b0b">jsdedupe</text>
 <text class="c m" x="293.1" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="339.0" y="208.9" width="26.0" height="19.1" rx="3" fill="#2a78d6"/>
-<text class="c" x="352.0" y="203.9" text-anchor="middle" fill="#0b0b0b">0.32</text>
+<rect class="s1" x="339.0" y="207.2" width="26.0" height="20.8" rx="3" fill="#2a78d6"/>
+<text class="c" x="352.0" y="202.2" text-anchor="middle" fill="#0b0b0b">0.28</text>
 <text class="c m" x="380.0" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="366.0" y="246.0" text-anchor="middle" fill="#0b0b0b">jsonflag</text>
 <text class="c m" x="366.0" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="411.9" y="107.5" width="26.0" height="120.5" rx="3" fill="#2a78d6"/>
-<text class="c" x="424.9" y="102.5" text-anchor="middle" fill="#0b0b0b">2.01</text>
+<rect class="s1" x="411.9" y="128.4" width="26.0" height="99.6" rx="3" fill="#2a78d6"/>
+<text class="c" x="424.9" y="123.4" text-anchor="middle" fill="#0b0b0b">1.33</text>
 <text class="c m" x="452.9" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="438.9" y="246.0" text-anchor="middle" fill="#0b0b0b">pagesize</text>
 <text class="c m" x="438.9" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="484.8" y="160.7" width="26.0" height="67.3" rx="3" fill="#2a78d6"/>
-<text class="c" x="497.8" y="155.7" text-anchor="middle" fill="#0b0b0b">1.12</text>
+<rect class="s1" x="484.8" y="133.9" width="26.0" height="94.1" rx="3" fill="#2a78d6"/>
+<text class="c" x="497.8" y="128.9" text-anchor="middle" fill="#0b0b0b">1.25</text>
 <text class="c m" x="525.8" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="511.8" y="246.0" text-anchor="middle" fill="#0b0b0b">retry</text>
 <text class="c m" x="511.8" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="557.7" y="165.4" width="26.0" height="62.6" rx="3" fill="#2a78d6"/>
-<text class="c" x="570.7" y="160.4" text-anchor="middle" fill="#0b0b0b">1.04</text>
+<rect class="s1" x="557.7" y="157.7" width="26.0" height="70.3" rx="3" fill="#2a78d6"/>
+<text class="c" x="570.7" y="152.7" text-anchor="middle" fill="#0b0b0b">0.94</text>
 <text class="c m" x="598.7" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="584.7" y="246.0" text-anchor="middle" fill="#0b0b0b">slugify</text>
 <text class="c m" x="584.7" y="262.0" text-anchor="middle" fill="#52514e"></text>
-<rect class="s1" x="630.6" y="214.4" width="26.0" height="13.6" rx="3" fill="#2a78d6"/>
-<text class="c" x="643.6" y="209.4" text-anchor="middle" fill="#0b0b0b">0.23</text>
+<rect class="s1" x="630.6" y="210.3" width="26.0" height="17.7" rx="3" fill="#2a78d6"/>
+<text class="c" x="643.6" y="205.3" text-anchor="middle" fill="#0b0b0b">0.24</text>
 <text class="c m" x="671.6" y="222.0" text-anchor="middle" fill="#52514e">—</text>
 <text class="l" x="657.6" y="246.0" text-anchor="middle" fill="#0b0b0b">ttlcache</text>
 <text class="c m" x="657.6" y="262.0" text-anchor="middle" fill="#52514e"></text>

@@ -156,21 +156,21 @@ one sentence and the directory; the project's own tests decide. No partial
 credit. The pictures are further down, where the other agents are; here is
 the run itself.
 
-All nine ran on 2026-09-20, one attempt each, writer MiniMax-M2.7:
+All nine ran on 2026-09-21 against commit 94b0162, one attempt each, writer MiniMax-M2.7:
 
 | task | solved | decisions | requests | wall | cost |
 | --- | --- | --- | --- | --- | --- |
-| ttlcache — entries outliving their TTL | yes | 14 | 1 | 12.4s | 0.04 RUB |
-| jsdedupe — dedupe in a JavaScript project | yes | 14 | 1 | 14.3s | 0.04 RUB |
-| duration — report whole days | yes | 14 | 1 | 22.5s | 0.04 RUB |
-| jsonflag — a `--json` flag on a CLI | yes | 14 | 1 | 22.6s | 0.04 RUB |
-| cart — a discount argument | yes | 14 | 1 | 23.1s | 0.04 RUB |
-| csvparse — doubled quotes inside a quoted field | yes | 14 | 1 | 51.0s | 0.04 RUB |
-| slugify — a new module from scratch | yes | 81 | 7 | 57.2s | 0.28 RUB |
-| retry — a max_delay cap in two functions | yes | 30 | 2 | 65.5s | 0.09 RUB |
-| pagesize — thread an argument through two modules | yes | 82 | 6 | 83.1s | 0.25 RUB |
+| cart — a discount argument | yes | 14 | 1 | 12.9s | 0.04 RUB |
+| ttlcache — entries outliving their TTL | yes | 14 | 1 | 15.2s | 0.04 RUB |
+| jsdedupe — dedupe in a JavaScript project | yes | 14 | 1 | 18.8s | 0.04 RUB |
+| jsonflag — a `--json` flag on a CLI | yes | 14 | 1 | 20.8s | 0.04 RUB |
+| duration — report whole days | yes | 14 | 1 | 34.2s | 0.04 RUB |
+| csvparse — doubled quotes inside a quoted field | yes | 14 | 1 | 67.6s | 0.04 RUB |
+| retry — a max_delay cap in two functions | yes | 30 | 2 | 78.7s | 0.09 RUB |
+| slugify — a new module from scratch | yes | 86 | 8 | 82.4s | 0.29 RUB |
+| pagesize — thread an argument through two modules | yes | 82 | 6 | 147.5s | 0.25 RUB |
 
-**Nine out of nine**, 0.10 RUB plus about $0.016 of writer per task. Six of them
+**Nine out of nine**, 0.10 RUB plus about $0.015 of writer per task. Six of them
 take a single request to Jev: one fan-out of questions, one region written six
 ways, one test run that picks the winner, done.
 
@@ -186,9 +186,9 @@ drafts race each other through the real test command instead of being judged
 one at a time.
 
 What is left in the time column is the writer, not the decisions. csvparse takes
-one request to Jev and fifty-one seconds, and nearly all of that is six drafts
+one request to Jev and sixty-eight seconds, and nearly all of that is six drafts
 being typed. Point `JEVCODE_WRITER_MODEL` at a faster model and the same task
-comes out in fifteen seconds with nothing else changed — which is the argument
+comes out in five seconds with nothing else changed — which is the argument
 for keeping the decisions and the typing in separate models.
 
 ### Where the seconds go
@@ -284,9 +284,11 @@ and a comparison that does not say which writer it used is not a comparison:
 </p>
 
 Read the first two columns: same writer, same tasks, different harness.
-We take nine out of nine against eight, and lose the clock — 352 seconds
+We take nine out of nine against eight, and lose the clock — 478 seconds
 against 240 — because an edit here asks for six drafts and MiniMax-M2.7 thinks
-at length before each one. That is the honest half, and it is on the board.
+at length before each one, and a draft is now given the time to finish thinking
+rather than being cut off at two minutes. That is the honest half, and it is on
+the board.
 
 The last two columns are the same experiment with a writer that does not think
 first, and there the gap stops being a percentage:
@@ -295,8 +297,8 @@ first, and there the gap stops being a percentage:
   <img src="docs/assets/speed.svg" alt="seconds per task, and who took each one" width="720">
 </p>
 
-Every one of the nine is quicker here, by between 1.8 and 62 times, and the
-whole benchmark takes two minutes instead of fifteen. The reason is not that
+Every one of the nine is quicker here, by between 3.4 and 56 times, and the
+whole benchmark takes one minute instead of fifteen. The reason is not that
 our loop is cleverer at that moment — it is that a conventional agent needs its
 model to call tools, and mercury-2 does not emit tool calls at all. opencode
 spends the time flailing at that, and gets two thirds of the way. Our writer is never asked to call
@@ -321,12 +323,12 @@ All four, by tasks solved:
 
 | agent | solved | median task | whole benchmark | model calls per task |
 | --- | --- | --- | --- | --- |
-| jevcode · Jev + MiniMax-M2.7 | 9/9 (100%) | 23.1s | 352s | 10.1 |
-| jevcode · Jev + mercury-2 | 8/9 (89%) | 10.0s | 120s | 11.8 |
+| jevcode · Jev + mercury-2 | 9/9 (100%) | 4.7s | 64s | 11.0 |
+| jevcode · Jev + MiniMax-M2.7 | 9/9 (100%) | 34.2s | 478s | 10.0 |
 | opencode · MiniMax-M2.7 | 8/9 (89%) | 24.7s | 240s | — |
 | opencode · mercury-2 | 6/9 (67%) | 72.5s | 916s | — |
 
-Nine tasks, one attempt each, run 2026-09-20 on commit 0e4f21b. Each agent is shown with both writers it was measured on; the head-to-head pair shares one. Test files and Makefiles are checksummed, so a suite made green by rewriting its own tests does not count, and a run that edits the original task library instead of its own copy is not scored at all.
+Nine tasks, one attempt each. Both jevcode rows were re-run on 2026-09-21 against commit 94b0162; the opencode rows are the 2026-09-20 runs, which our own code cannot move. Each agent is shown with both writers it was measured on; the head-to-head pair shares one. Test files and Makefiles are checksummed, so a suite made green by rewriting its own tests does not count, and a run that edits the original task library instead of its own copy is not scored at all.
 
 <!-- /bench:table -->
 
