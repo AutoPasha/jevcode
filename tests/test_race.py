@@ -19,7 +19,7 @@ from jevcode.repo import Repo
 from jevcode.trace import Trace
 from jevcode.writer import Draft, WriterUsage
 
-from fakes import FakeOne
+from fakes import FakeOne, Streams
 
 
 SUITE = ("import unittest\nfrom work import answer\n\n"
@@ -27,7 +27,7 @@ SUITE = ("import unittest\nfrom work import answer\n\n"
          "    def test_answer(self):\n        self.assertEqual(answer(), 42)\n")
 
 
-class Spread:
+class Spread(Streams):
     """A writer that returns several different drafts, only one of which works."""
 
     def __init__(self, bodies: list):

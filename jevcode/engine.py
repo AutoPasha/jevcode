@@ -15,6 +15,7 @@ executes anything and never sees a tool call; the code never guesses.
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass, field
 
 from . import act, gate, locate, markup, patch, questions, tryout, verify
@@ -350,12 +351,7 @@ class Agent:
 
         self.trace.detail("writing %s %s — %d candidates"
                           % (path, region.label, self.candidates))
-        result = patch.draft(self.one, self.writer, self.repo, path,
-                             region.start, region.end, self.task, n=self.candidates,
-                             related=self.related_code(path), failure=self.last_failure,
-                             settle_at=self.settle_at, settle_grace=self.settle_grace,
-                             whole=whole, label=region.name)
-        raced = self._race(path, region, result)
+        result, raced = self._write(path, region, whole)
         if raced is None and result.chosen is None:
             patch.judge(self.one, self.repo, path, region.start, region.end,
                         self.task, result)
@@ -404,6 +400,72 @@ class Agent:
             self.note("edited %s but nothing passed the check" % path)
         return None
 
+    def _write(self, path: str, region, whole: bool) -> tuple:
+        """Write the candidates and find out which one works.
+
+        Two ways of doing the same thing. The pipeline overlaps them: each draft
+        goes under the project's own command the moment it lands, and the first
+        green run ends the step — the drafts still being written never matter,
+        and with a writer that thinks before it answers they are most of the
+        wait. It needs a command to run and a tree cheap enough to copy, so when
+        there is neither, the step falls back to writing the whole pile first
+        and racing it afterwards.
+        """
+        command = self._check_command()
+        if (not command or self.dry_run or self.candidates < 2
+                or not hasattr(self.writer, "stream")
+                or not tryout.affordable(self.repo.root)):
+            result = self._draft(path, region, whole)
+            return result, self._race(path, region, result)
+        return self._piped(path, region, whole, command)
+
+    def _draft(self, path: str, region, whole: bool):
+        return patch.draft(self.one, self.writer, self.repo, path,
+                           region.start, region.end, self.task, n=self.candidates,
+                           related=self.related_code(path), failure=self.last_failure,
+                           settle_at=self.settle_at, settle_grace=self.settle_grace,
+                           whole=whole, label=region.name)
+
+    def _piped(self, path: str, region, whole: bool, command: str) -> tuple:
+        """Drafts and test runs overlapped, stopping at the first green one."""
+        brief = patch.compose(self.repo, path, region.start, region.end, self.task,
+                              related=self.related_code(path), failure=self.last_failure,
+                              whole=whole, label=region.name)
+        # Before anything is written: the baseline runs the command itself, and
+        # running it while the copies are being tested would measure the load
+        # rather than the suite.
+        self.baseline(command)
+        sifter = patch.Sifter(path, brief.region_text, brief.merge)
+        stop = threading.Event()
+
+        def arriving():
+            for written in self.writer.stream(brief.prompt, n=self.candidates,
+                                              system=brief.system,
+                                              max_tokens=brief.room, stop=stop,
+                                              enough=self.settle_at,
+                                              grace=self.settle_grace):
+                candidate = sifter.add(written)
+                if candidate.alive:
+                    yield candidate
+
+        trials, winner, _ = tryout.pipeline(self.repo, command, path, region.start,
+                                            region.end, arriving(),
+                                            timeout=self._patience(), stop=stop)
+        cands = sifter.candidates
+        if not [c for c in cands if c.alive] and any(
+                c.rejected.startswith("cut off") for c in cands):
+            # Every draft ran out of room, so nothing was ever run. Worth one
+            # more round with twice the space, the plain way.
+            cands = patch.roomier(self.writer, brief, path, self.candidates,
+                                  self.settle_grace)
+            result = patch.settle(cands)
+            return result, self._race(path, region, result)
+        result = patch.settle(cands)
+        if not trials:
+            return result, None
+        return result, self._settle_race(path, region, result, trials, command,
+                                         winner, piped=True)
+
     def _race(self, path: str, region, result) -> dict | None:
         """Try every candidate against the project's own tests, all at once.
 
@@ -422,17 +484,39 @@ class Agent:
         if not tryout.affordable(self.repo.root):
             self.trace.detail("too big a tree to try the candidates side by side")
             return None
-        before = self.baseline(command)
+        self.baseline(command)
         trials = tryout.race(self.repo, command, path, region.start, region.end,
                              result.alive, timeout=self._patience())
         if not trials:
             return None
-        self.trace.detail("tried %d candidates against `%s` at once: %s"
+        return self._settle_race(path, region, result, trials, command)
+
+    def _settle_race(self, path: str, region, result, trials: dict, command: str,
+                     winner: str = "", piped: bool = False) -> dict:
+        """What the test runs amount to: a winner, or a region that went nowhere.
+
+        Shared by both ways of running them. The pipeline already knows its
+        winner — it stopped at the green run — so the only thing left for it
+        here is what happens when nothing went green.
+        """
+        before = self.baseline(command)
+        self.trace.detail("tried %d candidates against `%s` %s: %s"
                           % (len(trials), command,
+                             "as they arrived" if piped else "at once",
                              ", ".join("%s %s" % (t.letter, verify.describe(t.result))
                                        for t in sorted(trials.values(),
                                                        key=lambda t: t.letter))))
         order = []
+        if winner:
+            for trial in trials.values():
+                self.trace.record("trial", letter=trial.letter, passed=trial.run.ok,
+                                  passed_tests=trial.result.passed,
+                                  failed_tests=trial.result.failed,
+                                  seconds=trial.run.seconds,
+                                  chosen=trial.letter == winner)
+            result.chosen = next(c for c in result.alive if c.letter == winner)
+            result.reason = "the tests picked %s out of %d" % (winner, len(trials))
+            return trials
         if tryout.undecided(trials, before):
             # Every draft that moved anything moved it by exactly the same
             # amount. That is the one case the tests cannot settle, so it is

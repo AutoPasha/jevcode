@@ -78,7 +78,7 @@ def instrument(clock: Clock) -> None:
     # inside "everything else".
     from jevcode import act, tryout
 
-    run_command, race = act.run, tryout.race
+    run_command, race, pipeline = act.run, tryout.race, tryout.pipeline
 
     def timed_run(command, cwd, *a, **kw):
         with clock.phase("tests"):
@@ -88,7 +88,20 @@ def instrument(clock: Clock) -> None:
         with clock.phase("tests"):
             return race(*a, **kw)
 
-    act.run, tryout.race = timed_run, timed_race
+    # The pipeline is deliberately not two phases: the drafts are being written
+    # while the tests run, so splitting it would either double-count the
+    # overlap or hide it. One phase, named for what it actually is.
+    def timed_pipeline(*a, **kw):
+        # The runs started inside it are the same wall clock seen twice, so
+        # they are suppressed the same way a race suppresses its own runs.
+        clock.depth["tests"] = clock.depth.get("tests", 0) + 1
+        try:
+            with clock.phase("drafts + tests"):
+                return pipeline(*a, **kw)
+        finally:
+            clock.depth["tests"] -= 1
+
+    act.run, tryout.race, tryout.pipeline = timed_run, timed_race, timed_pipeline
     # engine imported `act` as a module, so patching the attribute is enough;
     # tryout calls act.run through the module for the same reason.
 
@@ -113,6 +126,7 @@ def run(directory: str, task: str, args) -> dict:
     one_s = clock.spent.get("system one", 0.0)
     writer_s = clock.spent.get("writer", 0.0)
     tests_s = clock.spent.get("tests", 0.0)
+    both_s = clock.spent.get("drafts + tests", 0.0)
     return {
         "task": task[:70],
         "outcome": outcome.reason,
@@ -123,7 +137,13 @@ def run(directory: str, task: str, args) -> dict:
             "writer": {"seconds": round(writer_s, 2), "calls": clock.calls.get("writer", 0),
                        "drafts": writer_usage.calls},
             "tests": {"seconds": round(tests_s, 2), "calls": clock.calls.get("tests", 0)},
-            "machine": {"seconds": round(total - one_s - writer_s - tests_s, 2), "calls": 0},
+            # One phase because the two overlap on purpose: a draft is tested
+            # while the next one is still being written.
+            "drafts + tests": {"seconds": round(both_s, 2),
+                               "calls": clock.calls.get("drafts + tests", 0),
+                               "drafts": writer_usage.calls},
+            "machine": {"seconds": round(total - one_s - writer_s - tests_s - both_s, 2),
+                        "calls": 0},
         },
         "cost": round(usage.cost + writer_usage.cost, 4),
         "currency": usage.currency or writer_usage.currency,
@@ -141,6 +161,11 @@ def report(result: dict) -> str:
             extra = "  %d rounds, %d drafts" % (phase["calls"], phase["drafts"])
         elif name == "tests":
             extra = "  %d runs of the project's own command" % phase["calls"]
+        elif name == "drafts + tests":
+            if not phase["seconds"]:
+                continue
+            extra = "  %d writing steps, %d drafts, tested as they arrived" % (
+                phase["calls"], phase["drafts"])
         lines.append("  %-11s %6.1fs  %3.0f%%%s" % (name, phase["seconds"], share, extra))
     lines.append("  cost        %6.2f %s" % (result["cost"], result["currency"]))
     return "\n".join(lines)

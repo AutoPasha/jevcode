@@ -150,18 +150,9 @@ class Writer:
         if not self.key:
             raise RuntimeError("no writer key: set JEVCODE_WRITER_KEY (or OPENAI_API_KEY)")
 
-        def one(i: int) -> Draft:
-            temp = self.temperature + spread * (i / max(n - 1, 1))
-            try:
-                text, spent, cut = self._once(prompt, system, min(temp, 1.3), max_tokens)
-            except net.HTTPError as ex:
-                return Draft(i, "", "", 0.0, "HTTP %d: %s" % (ex.status, ex.body[:200]))
-            except Exception as ex:                      # noqa: BLE001 - reported, not raised
-                return Draft(i, "", "", 0.0, str(ex)[:200])
-            return Draft(i, text, extract_code(text), round(spent, 2), truncated=cut)
-
         pool = cf.ThreadPoolExecutor(max(n, 1))
-        futures = [pool.submit(one, i) for i in range(n)]
+        futures = [pool.submit(self._one_draft, i, n, prompt, system, spread, max_tokens)
+                   for i in range(n)]
         try:
             if not enough or enough >= n:
                 out = [f.result() for f in futures]
@@ -170,6 +161,65 @@ class Writer:
         finally:
             pool.shutdown(wait=False)
         return sorted([d for d in out if d is not None], key=lambda d: d.index)
+
+    def stream(self, prompt: str, n: int = 4, system: str = "", max_tokens: int = 1600,
+               spread: float = 0.25, stop=None, enough: int = 0, grace: float = 2.5):
+        """The same n candidates, handed over one at a time as they land.
+
+        `drafts` cannot say anything until the last writer call is back, and
+        with a writer that thinks before it answers that last call sets the pace
+        of the whole step. Nothing downstream actually needs the pile, though:
+        the tests judge one candidate at a time and stop at the first green one.
+        So this yields each draft the moment it arrives, and the caller can put
+        it to work while the rest are still being written.
+
+        `stop` is an event meaning "the answer is known". Once it is set the
+        remaining calls are abandoned — they are paid for either way, but
+        nobody waits for them.
+
+        `enough` and `grace` are the same deal `drafts` makes, kept because
+        nothing green is still a possible ending: once that many have landed the
+        rest get `grace` seconds and are then left behind, so a step that ends
+        up rejecting everything is no slower than it was before.
+        """
+        if not self.key:
+            raise RuntimeError("no writer key: set JEVCODE_WRITER_KEY (or OPENAI_API_KEY)")
+        pool = cf.ThreadPoolExecutor(max(n, 1))
+        arrived = 0
+        deadline = 0.0
+        try:
+            futures = [pool.submit(self._one_draft, i, n, prompt, system, spread, max_tokens)
+                       for i in range(n)]
+            pending = set(futures)
+            while pending:
+                if stop is not None and stop.is_set():
+                    break
+                if deadline and time.time() > deadline:
+                    break
+                done, pending = cf.wait(pending, timeout=0.25,
+                                        return_when=cf.FIRST_COMPLETED)
+                for future in done:
+                    draft = future.result()
+                    if draft is not None:
+                        arrived += 1
+                        yield draft
+                if enough and not deadline and arrived >= enough and pending:
+                    deadline = time.time() + grace
+        finally:
+            for future in futures:
+                future.cancel()
+            pool.shutdown(wait=False)
+
+    def _one_draft(self, i: int, n: int, prompt: str, system: str, spread: float,
+                   max_tokens: int) -> Draft:
+        temp = self.temperature + spread * (i / max(n - 1, 1))
+        try:
+            text, spent, cut = self._once(prompt, system, min(temp, 1.3), max_tokens)
+        except net.HTTPError as ex:
+            return Draft(i, "", "", 0.0, "HTTP %d: %s" % (ex.status, ex.body[:200]))
+        except Exception as ex:                          # noqa: BLE001 - reported, not raised
+            return Draft(i, "", "", 0.0, str(ex)[:200])
+        return Draft(i, text, extract_code(text), round(spent, 2), truncated=cut)
 
 
 THINK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)

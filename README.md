@@ -191,6 +191,37 @@ being typed. Point `JEVCODE_WRITER_MODEL` at a faster model and the same task
 comes out in five seconds with nothing else changed — which is the argument
 for keeping the decisions and the typing in separate models.
 
+### The step stopped being two waits in a row
+
+Racing the drafts through the test command replaced a chain of judgements with
+a fact, but it kept a wait that earns nothing: every draft had to be written
+before the first test could start. With a writer that thinks before it types,
+that last straggler is most of the step — and a draft is not better for being
+slow. So the two now overlap. Each draft goes under the project's own command
+the moment it lands, and the first green run ends the step: the runs still
+going are killed, the drafts still being written are abandoned.
+
+Measured by alternating the two versions run for run, because the writer's own
+latency drifts over an hour and two series taken back to back cannot be
+compared. MiniMax-M2.7 with thinking on, eight runs of each per task:
+
+| task | before | after | |
+| --- | --- | --- | --- |
+| csvparse — one region, the right draft arrives early | 92s | **18s** | 5× |
+| jsonflag — same shape, a shorter region | 30s | **23s** | 1.3× |
+| slugify — a module written from nothing | 110s | 115s | no change |
+
+Medians, and the spread is the story in the third row: slugify ran anywhere
+from 75s to 260s on *both* versions, because every draft of a whole module
+comes back red and the step ends on the last one either way. The pipeline only
+pays where a green draft exists to stop at — which is most ordinary edits, and
+none of the from-scratch ones.
+
+Two things it is fair to hold against the table. A draft abandoned mid-flight
+is still generated and still billed by the provider; cancelling waits, not
+spend. And the run that ends on the first green draft has not compared it
+against the five it never saw — it is right, not best.
+
 ### Where the seconds go
 
 `bench/profile.py` times a run by phase — wall clock, not a sum, since drafts
@@ -209,6 +240,12 @@ short task the decisions dominate and on a long one the drafts do. The first
 three rows were measured before the drafts raced each other through the test
 command; the last one after, which is why it has a column of its own for the
 tests and why its one request is the whole of its decisions.
+
+Since the drafts and the tests overlap, `profile.py` reports them as one phase
+rather than two — splitting them would either double-count the overlap or hide
+it. On cart the whole writing step is now 9.5s of a 10.7s run, and it produced
+one draft rather than six: the first one turned the suite green and the rest
+were abandoned where they stood.
 
 Keeping the connection open is worth measuring rather than assuming.
 `bench/handshake.py` asks the same trivial question ten times each way:

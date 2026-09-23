@@ -19,8 +19,10 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import os
+import queue
 import shutil
 import tempfile
+import threading
 from dataclasses import dataclass
 
 from . import act, verify
@@ -98,6 +100,97 @@ def race(repo, command: str, rel: str, start: int, end: int, candidates: list,
                                                  verify.parse(run.output, run.code))
         return trials
     finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def pipeline(repo, command: str, rel: str, start: int, end: int, source,
+             timeout: int = 300, workers: int = WORKERS, stop=None) -> tuple:
+    """Test each candidate the moment it is written, and stop at the first green one.
+
+    `race` needs the whole pile before it can start, so the slowest draft sets
+    the pace of the step even though nothing about it is better — with a writer
+    that thinks before it answers, that straggler is most of the wait. Here the
+    drafts arrive one at a time from `source` and each goes under the project's
+    own command straight away, while the rest are still being written.
+
+    The first candidate whose run comes back green ends the step: the remaining
+    runs are killed, `source` is told to stop, and nothing waits for a draft
+    whose verdict cannot change the answer. The runs that did finish are
+    returned either way — when nothing goes green they are exactly what `pick`
+    needs to choose the candidate that moved the suite furthest.
+
+    Returns (trials by letter, winning letter or "", candidates seen in order).
+    """
+    before_text = repo.read(rel)
+    scratch = tempfile.mkdtemp(prefix="jevcode-pipe-")
+    # One event for the whole step. The caller passes its own when the source is
+    # a writer that should also be told to stop: the drafts still in flight are
+    # paid for either way, but there is no sense waiting for them.
+    stop = stop if stop is not None else threading.Event()
+    events: queue.Queue = queue.Queue()
+    seen: list = []
+    trials: dict = {}
+    winner = ""
+    started: list = []
+    pool = cf.ThreadPoolExecutor(max(1, workers))
+
+    def feed() -> None:
+        try:
+            for candidate in source:
+                if stop.is_set():
+                    break
+                events.put(("draft", candidate))
+        except Exception as ex:                          # noqa: BLE001 - reported, not raised
+            events.put(("failed", ex))
+        finally:
+            events.put(("end", None))
+
+    def attempt(candidate) -> act.Run:
+        root = os.path.join(scratch, candidate.letter)
+        shutil.copytree(repo.root, root, symlinks=True,
+                        ignore=shutil.ignore_patterns(*SKIP))
+        with open(os.path.join(root, rel), "w", encoding="utf-8") as fh:
+            fh.write(act.replace_region(before_text, start, end, candidate.code))
+        return act.run(command, root, timeout, stop=stop)
+
+    feeder = threading.Thread(target=feed, daemon=True)
+    feeder.start()
+    try:
+        writing = True
+        running = 0
+        while (writing or running) and not winner:
+            kind, payload = events.get()
+            if kind == "draft":
+                seen.append(payload)
+                running += 1
+                future = pool.submit(attempt, payload)
+                started.append(future)
+                future.add_done_callback(
+                    lambda f, c=payload: events.put(("trial", (c, f))))
+            elif kind == "trial":
+                running -= 1
+                candidate, future = payload
+                try:
+                    run = future.result()
+                except Exception as ex:                  # noqa: BLE001 - reported, not raised
+                    run = act.Run(command, 127, str(ex)[:300], 0.0)
+                if run.abandoned:
+                    continue
+                trials[candidate.letter] = Trial(candidate.letter, run,
+                                                 verify.parse(run.output, run.code))
+                if run.ok:
+                    winner = candidate.letter
+            else:                                        # "end" or "failed"
+                writing = False
+        return trials, winner, seen
+    finally:
+        # Set first, then wait: the runs still going are watching this event and
+        # die within a tick of it, and the scratch tree must outlive them or the
+        # copies vanish from under a process that is still reading them.
+        stop.set()
+        cf.wait(started, timeout=10)
+        pool.shutdown(wait=False)
+        feeder.join(timeout=2)
         shutil.rmtree(scratch, ignore_errors=True)
 
 

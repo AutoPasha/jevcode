@@ -21,7 +21,7 @@ from jevcode.repo import Repo
 from jevcode.trace import Trace
 from jevcode.writer import Draft, WriterUsage
 
-from fakes import FakeOne
+from fakes import FakeOne, Streams
 
 
 PYTEST_RED = "....FF                       [100%]\n2 failed, 4 passed in 0.12s\n"
@@ -118,7 +118,7 @@ class Skeletons(unittest.TestCase):
         self.assertTrue(Repo(self.root).greenfield("doc.py"))
 
 
-class StagedWriter:
+class StagedWriter(Streams):
     """A writer whose reply depends on which file it was asked about."""
 
     def __init__(self, by_path: dict):

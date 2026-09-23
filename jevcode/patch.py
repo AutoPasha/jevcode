@@ -112,14 +112,25 @@ class PatchResult:
         return [c for c in self.candidates if c.alive]
 
 
-def _sift(rel: str, drafts: list, region_text: str, merge) -> list:
-    """Facts before opinion: what does not change anything, does not parse, or
-    is a copy of another draft is rejected here, for free, before Jev is asked
-    about anything. Shared by the two ways of writing, so a truncated reply is
-    labelled the same whether it was a patch or a whole file."""
-    seen, cands = {}, []
-    for draft in drafts:
-        letter = LETTERS[len(cands)]
+class Sifter:
+    """Facts before opinion, one draft at a time.
+
+    What does not change anything, does not parse, or is a copy of another
+    draft is rejected here, for free, before Jev is asked about anything. It
+    works per draft rather than per pile because the pile is no longer the unit
+    of work: a draft that lands first gets sifted and put under the tests while
+    the rest are still being written.
+    """
+
+    def __init__(self, rel: str, region_text: str, merge):
+        self.rel = rel
+        self.region_text = region_text
+        self.merge = merge
+        self.seen: dict = {}
+        self.candidates: list = []
+
+    def add(self, draft) -> "Candidate":
+        letter = LETTERS[len(self.candidates) % len(LETTERS)]
         cand = Candidate(letter, draft.code, draft.text, seconds=draft.seconds)
         if draft.error:
             cand.rejected = "writer failed: " + draft.error
@@ -127,18 +138,26 @@ def _sift(rel: str, drafts: list, region_text: str, merge) -> list:
             cand.rejected = "cut off at the token limit"
         elif not draft.code.strip():
             cand.rejected = "empty"
-        elif draft.code.strip() == region_text.strip():
+        elif draft.code.strip() == self.region_text.strip():
             cand.rejected = "identical to the current code"
         else:
-            problem = act.syntax_error(rel, merge(draft.code))
+            problem = act.syntax_error(self.rel, self.merge(draft.code))
             if problem:
                 cand.rejected = "does not parse: " + problem
-            elif draft.code.strip() in seen:
-                cand.rejected = "same as candidate " + seen[draft.code.strip()]
+            elif draft.code.strip() in self.seen:
+                cand.rejected = "same as candidate " + self.seen[draft.code.strip()]
             else:
-                seen[draft.code.strip()] = letter
-        cands.append(cand)
-    return cands
+                self.seen[draft.code.strip()] = letter
+        self.candidates.append(cand)
+        return cand
+
+
+def _sift(rel: str, drafts: list, region_text: str, merge) -> list:
+    """The whole pile at once, for the callers that have it all in hand."""
+    sifter = Sifter(rel, region_text, merge)
+    for draft in drafts:
+        sifter.add(draft)
+    return sifter.candidates
 
 
 def context_window(repo, rel: str, start: int, end: int, margin: int = 40) -> str:
@@ -183,6 +202,36 @@ def draft(one, writer, repo, rel: str, start: int, end: int, task: str,
     project's own tests usually answer the same question better and for free;
     see `judge` for when there is nothing to run.
     """
+    brief = compose(repo, rel, start, end, task, related=related, failure=failure,
+                    whole=whole, label=label)
+    drafts = writer.drafts(brief.prompt, n=n, system=brief.system,
+                           max_tokens=brief.room, enough=settle_at, grace=settle_grace)
+    cands = _sift(rel, drafts, brief.region_text, brief.merge)
+    alive = [c for c in cands if c.alive]
+    if not alive and any(c.rejected.startswith("cut off") for c in cands):
+        cands = roomier(writer, brief, rel, n, settle_grace)
+        alive = [c for c in cands if c.alive]
+    return settle(cands)
+
+
+@dataclass
+class Brief:
+    """Everything one writing step needs, assembled once.
+
+    Split out of `draft` because the pipeline needs the same brief without the
+    waiting: it hands the prompt to the writer, sifts each draft as it lands and
+    never has the pile in one place.
+    """
+    prompt: str
+    system: str
+    room: int
+    region_text: str
+    merge: object
+
+
+def compose(repo, rel: str, start: int, end: int, task: str, related: str = "",
+            failure: tuple = (), whole: bool = False, label: str = "") -> Brief:
+    """The brief for one region: what to write, and how much room to write it in."""
     body = repo.read(rel).splitlines()
     region_text = "\n".join(body[start - 1:end])
     tail = (RELATED.format(body=related[:6000]) if related else "")
@@ -205,23 +254,26 @@ def draft(one, writer, repo, rel: str, start: int, end: int, task: str,
             context=context_window(repo, rel, start, end),
             region=region_text or "(empty)", related=tail, failure=fail)
         system = SYSTEM
-
-    room = budget(region_text, related, whole)
-    drafts = writer.drafts(prompt, n=n, system=system, max_tokens=room,
-                           enough=settle_at, grace=settle_grace)
     merge = lambda code: act.replace_region(repo.read(rel), start, end, code)  # noqa: E731
-    cands = _sift(rel, drafts, region_text, merge)
-    alive = [c for c in cands if c.alive]
-    if not alive and any(c.rejected.startswith("cut off") for c in cands):
-        # Every draft ran out of room. That is a budget the code chose badly,
-        # not a task the writer cannot do, so it is worth one more attempt with
-        # twice the space before giving up on the region.
-        drafts = writer.drafts(prompt, n=max(2, n // 2), system=system,
-                               max_tokens=min(room * 2, 16000),
-                               enough=0, grace=settle_grace)
-        cands = _sift(rel, drafts, region_text, merge)
-        alive = [c for c in cands if c.alive]
+    return Brief(prompt, system, budget(region_text, related, whole), region_text, merge)
 
+
+def roomier(writer, brief: Brief, rel: str, n: int, settle_grace: float = 2.5) -> list:
+    """One more attempt with twice the room, when every draft ran out of it.
+
+    A pile that is entirely "cut off at the token limit" is a budget the code
+    chose badly, not a task the writer cannot do, so it is worth the second
+    round before giving up on the region.
+    """
+    drafts = writer.drafts(brief.prompt, n=max(2, n // 2), system=brief.system,
+                           max_tokens=min(brief.room * 2, 16000),
+                           enough=0, grace=settle_grace)
+    return _sift(rel, drafts, brief.region_text, brief.merge)
+
+
+def settle(cands: list) -> PatchResult:
+    """What the pile amounts to once the free checks have had their say."""
+    alive = [c for c in cands if c.alive]
     if not alive:
         return PatchResult(cands, None, 0.0, "every candidate was rejected before judging")
     if len(alive) == 1:

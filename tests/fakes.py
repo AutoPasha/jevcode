@@ -54,7 +54,25 @@ class FakeOne:
         return 0.9
 
 
-class FakeWriter:
+class Streams:
+    """A writer that can produce a pile can also be read one draft at a time.
+
+    The real writer streams because its calls finish at wildly different times;
+    a stand-in has nothing to wait for, so handing the pile over one at a time
+    is the whole of it. Mixed into the stand-ins so the agent takes the same
+    path here as it does with a live writer.
+    """
+
+    def stream(self, prompt, n=4, system="", max_tokens=1600, spread=0.25, stop=None,
+               enough=0, grace=2.5):
+        for draft in self.drafts(prompt, n=n, system=system, max_tokens=max_tokens,
+                                 spread=spread):
+            if stop is not None and stop.is_set():
+                return
+            yield draft
+
+
+class FakeWriter(Streams):
     """Returns the same replacement every time, wrapped in a fence."""
 
     def __init__(self, code: str = "value = 2\n", usage=None):

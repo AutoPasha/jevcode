@@ -25,6 +25,9 @@ from jevcode.systemone import Answers, Usage           # noqa: E402
 from jevcode.trace import Trace                        # noqa: E402
 from jevcode.writer import Draft, WriterUsage          # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from fakes import Streams                             # noqa: E402
+
 CHECK = """test:
 \t@grep -q 'value = 2' a.py
 """
@@ -84,7 +87,7 @@ class StubbornOne:
         return 0.9
 
 
-class FixingWriter:
+class FixingWriter(Streams):
     """Writes the one change that turns the project's check green."""
 
     def __init__(self):
